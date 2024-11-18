@@ -667,23 +667,26 @@ def create_spatial_filter(raw_b,config):
 def create_raw(config, montage, no_montage_files):
     '''
     Function used to load a raw EEG file using the correct MNE function based on the file type.
-    Now handles .txt files both with and without headers by detecting if the first row contains numeric data.
-    If no header is present, it generates channel names automatically (CH1, CH2, etc.).
+    Handles .txt files with variable header lengths by detecting numeric data.
     '''
     if config['file_pattern'] == "*.txt":
+        # Read first few lines to analyze header structure
+        header_rows = 0
         with open(file_path) as file:
-            first_line = file.readline().strip()
+            lines = [next(file) for _ in range(5)]  # Read first 5 lines to check
             
-        # Try to convert first line values to float to check if they're numeric
-        try:
-            _ = [float(x) for x in first_line.split('\t')]
-            has_header = False
-        except ValueError:
-            has_header = True
-            
-        if has_header:
-            df = pd.read_csv(file_path, sep='\t', index_col=False, header=0)
+        for line in lines:
+            try:
+                # Try converting all values to float
+                _ = [float(x) for x in line.strip().split('\t')]
+                break  # Found first numeric line
+            except ValueError:
+                header_rows += 1
+                
+        if header_rows > 0:
+            df = pd.read_csv(file_path, sep='\t', index_col=False, header=range(header_rows-1))
             if config['channel_names'] == []:
+                # Use last header row for channel names
                 ch_names = list(df.columns)
                 config['channel_names'] = ch_names
         else:
@@ -699,7 +702,6 @@ def create_raw(config, montage, no_montage_files):
                 'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2',
                 'P2', 'P4', 'P6', 'P8', 'P10', 'PO8', 'PO4', 'O2'
                 ]
-                # Check if number of channels matches BioSemi64
                 if len(ch_names) != df.shape[1]:
                     sg.popup_ok(f'Warning: File has {df.shape[1]} channels but BioSemi64 requires 64 channels.\n'
                               'Using generic channel names instead.',
@@ -740,7 +742,7 @@ def create_raw(config, montage, no_montage_files):
                        'Please drop these channel(s)!',
                        location=(100, 100))
             
-        
+    # Rest of the function remains unchanged
     elif config['file_pattern'] == "*.bdf":
         raw = mne.io.read_raw_bdf(file_path, preload=True)
     elif config['file_pattern'] == "*.vhdr":
