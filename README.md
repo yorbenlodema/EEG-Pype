@@ -158,7 +158,7 @@ The EEG Quantitative Analysis Tool is a GUI-based application for calculating va
 
 ### Features
 #### Connectivity Measures
-1. **Phase Lag Index (PLI)**
+1. **Phase Lag Index (PLI)** *(Stam et al., Human Brain Mapping, 2007)*
    - Measures consistency of phase relationships between signals while being less sensitive to volume conduction
    - Values range from 0 (no phase coupling) to 1 (perfect phase coupling)
    - Zero-lag connections are discarded to reduce volume conduction effects
@@ -172,7 +172,7 @@ The EEG Quantitative Analysis Tool is a GUI-based application for calculating va
      - Force positive: Often used as negative correlations may not be physiologically meaningful
 
 #### Complexity Measures
-1. **Joint Permutation Entropy (JPE/PE)**
+1. **Joint Permutation Entropy (JPE/PE)** *(Scheijbeler et al., Network Neuroscience, 2022) and (Bandt and Pompe, Pysical Review Letters, 2002)*
    - Quantifies complexity through ordinal patterns in the signal
    - Options:
      - Time step (tau): Determines temporal scale of patterns (should be adjusted based on sampling rate)
