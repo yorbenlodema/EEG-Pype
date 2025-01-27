@@ -59,6 +59,9 @@ settings['input_directory'] = ' '
 settings['batch_name'] = ' '
 settings['frequency_bands_modified'] = 0
 settings['batch_prefix'] = ' '
+settings['header_rows'] = 1  # Skip ... header rows
+settings['channel_names_row'] = 0  # Channel names are in row ... +1 (0-based counting)
+# use channel_names_row = None if no header is present
 
 
 settings['montage',".txt_bio32"] = "biosemi32"
@@ -70,7 +73,7 @@ settings['montage',".bdf_128"] = "biosemi128"
 settings['montage',".edf_bio32"] = "biosemi32"
 settings['montage',".edf_bio64"] = "biosemi64"
 settings['montage',".edf_bio128"] = "biosemi128"
-settings['montage',".edf_10-20"] = "standard_1020"
+settings['montage',".edf_10-20"] = "standard_1005"
 settings['montage',".edf_GSN-Hydrocel_64"] = "GSN-HydroCel-64_1.0"
 settings['montage',".eeg"] = "n/a"
 settings['montage',".fif"] = "n/a"
