@@ -25,6 +25,8 @@ dependencies = [
     "scikit-learn",
     "openpyxl",
     "nibabel",
+    "multiprocessing",
+    "antropy",
 ]
 description = "eeg preprocessing"
 keywords = [
@@ -54,9 +56,9 @@ publishing = [
 ]
 
 [project.urls]
-Repository = "https://github.com/snorben/eeg_preprocessing_umcu"
-Issues = "https://github.com/snorben/eeg_preprocessing_umcu/issues"
-Changelog = "https://github.com/snorben/eeg_preprocessing_umcu/CHANGELOG.md"
+Repository = "https://github.com/yorbenlodema/eeg_preprocessing_umcu"
+Issues = "https://github.com/yorbenlodema/eeg_preprocessing_umcu/issues"
+Changelog = "https://github.com/yorbenlodema/eeg_preprocessing_umcu/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
