@@ -734,7 +734,6 @@ def create_raw(config, montage, no_montage_files):
                        'Please drop these channel(s)!',
                        location=(100, 100))
             
-    # Rest of the function remains unchanged for other file types
     elif config['file_pattern'] == "*.bdf":
         raw = mne.io.read_raw_bdf(file_path, preload=True)
     elif config['file_pattern'] == "*.vhdr":
