@@ -667,51 +667,44 @@ def create_spatial_filter(raw_b,config):
 def create_raw(config, montage, no_montage_files):
     '''
     Function used to load a raw EEG file using the correct MNE function based on the file type.
-    Handles .txt files with variable header lengths by detecting numeric data.
+    Handles .txt files with configurable header structure.
+    
+    In the settings file you can change:
+    - header_rows: Total number of header rows to skip (default: 1)
+    - channel_names_row: Row number containing channel names (0-based, default: 0 which equals first row)
     '''
-    if config['file_pattern'] == "*.txt":
-        # Read first few lines to analyze header structure
-        header_rows = 0
-        with open(file_path) as file:
-            lines = [next(file) for _ in range(5)]  # Read first 5 lines to check
-            
-        for line in lines:
-            try:
-                # Try converting all values to float
-                _ = [float(x) for x in line.strip().split('\t')]
-                break  # Found first numeric line
-            except ValueError:
-                header_rows += 1
-                
-        if header_rows > 0:
-            df = pd.read_csv(file_path, sep='\t', index_col=False, header=range(header_rows-1))
-            if config['channel_names'] == []:
-                # Use last header row for channel names
-                ch_names = list(df.columns)
-                config['channel_names'] = ch_names
-        else:
-            df = pd.read_csv(file_path, sep='\t', index_col=False, header=None)
-            if config['channel_names'] == [] and settings['montage', config['input_file_pattern']] == "biosemi64":
+    if config['file_pattern'] == "*.txt":        
+        if config['channel_names'] == []:
+            if config['channel_names_row'] is None and settings['montage', config['input_file_pattern']] == "biosemi64":
+                # Use biosemi64 names only if no header and biosemi64 montage
                 ch_names = [
-                'Fp1', 'AF7', 'AF3', 'F1', 'F3', 'F5', 'F7', 'FT7',
-                'FC5', 'FC3', 'FC1', 'C1', 'C3', 'C5', 'T7', 'TP7',
-                'CP5', 'CP3', 'CP1', 'P1', 'P3', 'P5', 'P7', 'P9',
-                'PO7', 'PO3', 'O1', 'Iz', 'Oz', 'POz', 'Pz', 'CPz',
-                'Fpz', 'Fp2', 'AF8', 'AF4', 'AFz', 'Fz', 'F2', 'F4',
-                'F6', 'F8', 'FT8', 'FC6', 'FC4', 'FC2', 'FCz', 'Cz',
-                'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2',
-                'P2', 'P4', 'P6', 'P8', 'P10', 'PO8', 'PO4', 'O2'
+                    'Fp1', 'AF7', 'AF3', 'F1', 'F3', 'F5', 'F7', 'FT7',
+                    'FC5', 'FC3', 'FC1', 'C1', 'C3', 'C5', 'T7', 'TP7',
+                    'CP5', 'CP3', 'CP1', 'P1', 'P3', 'P5', 'P7', 'P9',
+                    'PO7', 'PO3', 'O1', 'Iz', 'Oz', 'POz', 'Pz', 'CPz',
+                    'Fpz', 'Fp2', 'AF8', 'AF4', 'AFz', 'Fz', 'F2', 'F4',
+                    'F6', 'F8', 'FT8', 'FC6', 'FC4', 'FC2', 'FCz', 'Cz',
+                    'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2',
+                    'P2', 'P4', 'P6', 'P8', 'P10', 'PO8', 'PO4', 'O2'
                 ]
-                if len(ch_names) != df.shape[1]:
-                    sg.popup_ok(f'Warning: File has {df.shape[1]} channels but BioSemi64 requires 64 channels.\n'
-                              'Using generic channel names instead.',
-                              location=(100, 100))
-                    ch_names = [f'CH{i+1}' for i in range(df.shape[1])]
-                config['channel_names'] = ch_names
+            elif config['channel_names_row'] is not None:
+                # Read channel names from header if specified
+                with open(file_path, 'r') as file:
+                    for i in range(config['channel_names_row'] + 1):
+                        header = file.readline().strip()
+                    ch_names = header.split()
             else:
-                ch_names = [f'CH{i+1}' for i in range(df.shape[1])]
-                config['channel_names'] = ch_names
-                
+                # Generate generic names if no header and not biosemi64
+                with open(file_path, 'r') as file:
+                    first_line = file.readline().strip()
+                    num_channels = len(first_line.split())
+                    ch_names = [f'CH{i+1}' for i in range(num_channels)]
+        else:
+            ch_names = config['channel_names']
+
+        # Read data after skipping header rows
+        df = pd.read_csv(file_path, sep='\s+', skiprows=config['header_rows'])
+        
         ch_types = ["eeg"] * len(ch_names)
         info = mne.create_info(
             ch_names=ch_names, 
@@ -726,11 +719,10 @@ def create_raw(config, montage, no_montage_files):
             df = df.astype(float)
         except ValueError as e:
             raise ValueError(f"Non-numeric values found in the data. Please check your file format. Error: {e}")
-            
+        
         samples = df.T * 1e-6  # Scaling from µV to V
         raw = mne.io.RawArray(samples, info)
         
-        # Check for missing values
         missing_channels = []
         for col in df.columns:
             if df[col].isna().any():
@@ -742,7 +734,7 @@ def create_raw(config, montage, no_montage_files):
                        'Please drop these channel(s)!',
                        location=(100, 100))
             
-    # Rest of the function remains unchanged
+    # Rest of the function remains unchanged for other file types
     elif config['file_pattern'] == "*.bdf":
         raw = mne.io.read_raw_bdf(file_path, preload=True)
     elif config['file_pattern'] == "*.vhdr":
@@ -755,6 +747,7 @@ def create_raw(config, montage, no_montage_files):
     
     if config['file_pattern'] not in no_montage_files:
         raw.set_montage(montage=montage, on_missing='ignore')
+    
     config['sample_frequency'] = raw.info["sfreq"]
     return raw, config
 
