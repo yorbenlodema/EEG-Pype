@@ -146,106 +146,104 @@ python -m pip install .
 
 ## Quantitative analysis script (separate script)
 ### Overview
-The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs.
+The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs. Different from the preprocessing software, this program is best run from the command line due to compatibility issues of the parallel processing implementation with IDEs like Spyder. To do this, simply change directory to the folder containing the Python script and use (similar to): ```python eeg_quantitative_analysis.py```. Then, the GUI should load automatically.
 
 ### Data Requirements
-- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf')
-- Each folder should contain epoch files in .txt format
-- Epoch files should follow the naming convention: `[subject]_[level]_level_[frequency]Hz_Epoch_[number].txt`
+- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script.
+- Each folder should contain epoch files in .txt format.
+- Epoch files should follow the naming convention: `[subject]_[level]_level_[frequency]Hz_Epoch_[number].txt`.
 - Data can be loaded with or without headers:
-  - With headers (default): First row contains channel names
+  - With headers (default): First row contains channel names.
   - Without headers: Channel names will be auto-generated as "Channel_1", "Channel_2", etc.
 
 ### Features
 #### Connectivity Measures
 1. **Phase Lag Index (PLI)** *(Stam et al., Human Brain Mapping, 2007)*
-   - Measures consistency of phase relationships between signals while being less sensitive to volume conduction
-   - Values range from 0 (no phase coupling) to 1 (perfect phase coupling)
-   - Zero-lag connections are discarded to reduce volume conduction effects
+   - Measures consistency of phase relationships between signals while being less sensitive to volume conduction.
+   - Values range from 0 (no phase coupling) to 1 (perfect phase coupling).
+   - Zero-lag connections are discarded to reduce volume conduction effects.
 
 2. **Amplitude Envelope Correlation (AEC)**
    - Measures correlation between amplitude envelopes of band-filtered signals
    - Options:
-     - Standard AEC: Direct correlation of Hilbert envelopes
-     - Orthogonalized AEC (AECc): Removes zero-lag correlations through orthogonalization
-     - Epoch concatenation: Recommended for short epochs to improve reliability
-     - Force positive: Often used as negative correlations may not be physiologically meaningful
+     - Standard AEC: Direct correlation of Hilbert envelopes.
+     - Orthogonalized AEC (AECc): Removes zero-lag correlations through orthogonalization.
+     - Epoch concatenation: Recommended for short epochs to improve reliability.
+     - Force positive: Often used as negative correlations may not be physiologically meaningful.
 
 #### Complexity Measures
 1. **Joint Permutation Entropy (JPE/PE)** *(Scheijbeler et al., Network Neuroscience, 2022) and (Bandt and Pompe, Pysical Review Letters, 2002)*
-   - Quantifies complexity through ordinal patterns in the signal
+   - Quantifies complexity through ordinal patterns in the signal.
    - Options:
-     - Time step (tau): Determines temporal scale of patterns (should be adjusted based on sampling rate)
-     - Integer conversion: Can improve detection of equal values
-     - Inversion: 1-JPE provides a measure of similarity rather than complexity
-   - PE calculated per channel, JPE for channel pairs
+     - Time step (tau): Determines temporal scale of patterns (should be adjusted based on sampling rate).
+     - Integer conversion: Can improve detection of equal values.
+     - Inversion: 1-JPE provides a measure of similarity rather than complexity.
+   - PE calculated per channel, JPE for channel pairs.
 
 2. **Sample Entropy (SampEn)**
-   - Measures signal regularity/predictability
-   - Less sensitive to data length than ApEn
-   - Higher values indicate more complexity/randomness
-   - Order m: Length of compared sequences (typically 2 or 3)
+   - Measures signal regularity/predictability.
+   - Less sensitive to data length than ApEn.
+   - Higher values indicate more complexity/randomness.
+   - Order m: Length of compared sequences (typically 2 or 3).
 
 3. **Approximate Entropy (ApEn)**
-   - Similar to SampEn but with self-matches
+   - Similar to SampEn but with self-matches.
    - Options:
-     - Order m: Pattern length (typically 1 or 2)
-     - Tolerance r: Similarity criterion (typically 0.1-0.25 × SD)
+     - Order m: Pattern length (typically 1 or 2).
+     - Tolerance r: Similarity criterion (typically 0.1-0.25 × SD).
 
 #### Spectral Analysis Details
 1. **Peak Frequency Analysis**
-   - Calculated using Welch's method with smoothing
+   - Calculated using Welch's method with smoothing.
    - For multiple peaks:
-     - Uses kernel density estimation to find the dominant frequency
-     - Considers peak prominence to filter noise
-   - Reports channels without clear peaks separately
+     - Uses kernel density estimation to find the dominant frequency.
+     - Considers peak prominence to filter noise.
+   - Reports channels without clear peaks separately.
 
 2. **Spectral Variability**
-   - Tracks temporal fluctuations in relative band power
-   - Uses sliding window approach
-   - Coefficient of variation calculated per frequency band
-   - Window length affects temporal resolution vs. stability
+   - Tracks temporal fluctuations in relative band power.
+   - Uses sliding window approach.
+   - Coefficient of variation calculated per frequency band.
+   - Window length affects temporal resolution vs. stability.
 
-#### MST Measures (for PLI and AEC)
-- Degree: Maximum node degree normalized by (M-1)
-- Eccentricity: Longest path from each node
-- Betweenness centrality: Node importance in network
-- Leaf fraction: Proportion of nodes with degree 1
-- Tree hierarchy: Balance between network integration and overload prevention
-- Additional measures: Diameter, kappa (degree divergence), mean edge weight
+#### MST Measures (for PLI and AEC(c))
+- Degree: Maximum node degree normalized by (M-1).
+- Eccentricity: Longest path from each node.
+- Betweenness centrality: Node importance in network.
+- Leaf fraction: Proportion of nodes with degree 1.
+- Tree hierarchy: Balance between network integration and overload prevention.
+- Additional measures: Diameter, kappa (degree divergence), mean edge weight.
 
 ### Output Options
 1. **Excel Results**
-   - Whole-brain averages, averaged over all the channels or brain areas, and epochs
-   - Channel-level averages (optional), the features calculated per channel or brain area, averaged over epochs
-   - Analysis information sheet
-   - Channel metadata
+   - Whole-brain averages, averaged over all the channels or brain areas, and epochs.
+   - Channel-level averages (optional), the features calculated per channel or brain area, averaged over epochs.
+   - Analysis information sheet.
+   - Channel metadata.
 
 2. **Connectivity Matrices**
-   - Save raw connectivity matrices. This option saves the full connectivity matrices, averaged over the epochs
-   - Save MST matrices. This option saves the full connectivity matrices, calculated over the epoch-averaged connectivity matrices
-   - Matrices are saved in subject-specific folders with proper channel labeling
+   - Save raw connectivity matrices. This option saves the full connectivity matrices, averaged over the epochs.
+   - Save MST matrices. This option saves the full connectivity matrices, calculated over the epoch-averaged connectivity matrices.
+   - Matrices are saved in subject-specific folders with proper channel labeling.
 
 ### Performance Options
-- Configurable number of processing threads for parallel processing, increasing speed
-- Batch processing with memory management
-- Progress tracking and detailed logging
+- Configurable number of processing threads for parallel processing, increasing speed.
+- Batch processing with memory management.
+- Progress tracking and detailed logging.
 
 ### Usage Tips
-1. Select your data folder and specify the folder extension
-2. Configure desired measures and their parameters
-3. Choose appropriate header option based on your epoch file format
-4. Select output options (matrices, channel averages)
-5. Monitor progress through the GUI and log window
-6. Results will be saved in the input folder with timestamp
+1. Select your data folder and specify the folder extension.
+2. Configure desired measures and their parameters.
+3. Choose an appropriate header option based on your epoch file format.
+4. Do not forget to specify sample frequency, even if not calculating power-based features.
+5. Select output options (matrices, channel averages).
+6. Monitor progress through the GUI and log window.
+7. Results will be saved in the input folder with timestamp.
 
 ### Memory Considerations
-- The tool includes memory monitoring
-- Large datasets are processed in batches
-- For very large datasets, consider:
-  - Reducing the number of parallel threads
-  - Processing fewer measures simultaneously
-  - Using epoch concatenation for AEC(c) calculations
+- The tool includes memory monitoring.
+- Large datasets are processed in batches.
+- For large datasets or for calculating entropy measures on long/high sample frequency epochs, consider reducing the number of parallel threads.
 
 ## Contributing
 
