@@ -19,6 +19,8 @@ from scipy import signal
 from scipy.stats import gaussian_kde
 from antropy import sample_entropy
 
+# test
+
 # Configuration
 FOLDER_EXTENSION = 'bdf'  # Change this to match your folder extension (e.g., 'bdf', 'edf', etc.)
 MAX_MEMORY_PERCENT = 70  # Maximum memory usage percentage
