@@ -72,7 +72,7 @@ conda activate eeg_env
 Clone the EEG Preprocessing Tool repository:
 
 ```bash
-git clone https://github.com/snorben/eeg_preprocessing_umcu.git
+git clone https://github.com/yorbenlodema/eeg_preprocessing_umcu.git
 cd eeg_preprocessing_umcu
 ```
 
