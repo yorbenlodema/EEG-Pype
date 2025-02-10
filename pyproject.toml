@@ -25,7 +25,6 @@ dependencies = [
     "scikit-learn",
     "openpyxl",
     "nibabel",
-    "multiprocessing",
     "antropy",
 ]
 description = "eeg preprocessing"
