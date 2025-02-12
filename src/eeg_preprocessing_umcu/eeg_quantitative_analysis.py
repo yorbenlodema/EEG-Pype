@@ -2,6 +2,7 @@ PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyia
 import PySimpleGUI as sg
 import pandas as pd
 import numpy as np
+import mne
 import os
 import itertools
 import math
@@ -18,6 +19,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy import signal
 from scipy.stats import gaussian_kde
 from antropy import sample_entropy
+from typing import Dict, Optional, Tuple, Union
 
 # Configuration
 FOLDER_EXTENSION = 'bdf'  # Change this to match your folder extension (e.g., 'bdf', 'edf', etc.)
@@ -222,6 +224,111 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
     df.to_csv(filepath)
     return filepath
 
+def calculate_PSD(data: np.ndarray,
+                 fs: float,
+                 method: str = 'multitaper',
+                 freq_range: Optional[Tuple[float, float]] = None,
+                 compute_spectrogram: bool = False,
+                 **kwargs) -> Dict[str, np.ndarray]:
+    """
+    Calculate Power Spectral Density (PSD) and optionally spectrogram using specified method.
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        Time series data (samples x channels)
+    fs : float
+        Sampling frequency in Hz
+    method : str
+        Method to use for PSD calculation ('multitaper', 'welch', 'fft')
+    freq_range : tuple, optional
+        Frequency range to return (min_freq, max_freq)
+    compute_spectrogram : bool
+        Whether to compute and return spectrogram
+    **kwargs : dict
+        Method-specific parameters:
+            Multitaper:
+                time_bandwidth : float (default 4)
+                n_tapers : int (optional, computed from time_bandwidth)
+            Spectrogram:
+                window_length : int (in ms)
+                overlap : float (0 to 1)
+    
+    Returns
+    -------
+    dict
+        Dictionary containing:
+            'frequencies' : np.ndarray
+                Frequency values
+            'psd' : np.ndarray
+                Power spectral density (frequencies x channels)
+            'spectrogram' : np.ndarray, optional
+                Time-frequency representation (only if compute_spectrogram=True)
+            'times' : np.ndarray, optional
+                Time points for spectrogram (only if compute_spectrogram=True)
+    """
+    if method not in ['multitaper', 'welch', 'fft']:
+        raise ValueError(f"Unknown method: {method}")
+        
+    # Input validation
+    if not isinstance(data, np.ndarray):
+        raise ValueError("Data must be a numpy array")
+    if data.ndim != 2:
+        raise ValueError("Data must be 2D array (samples x channels)")
+    if fs <= 0:
+        raise ValueError("Sampling frequency must be positive")
+        
+    # Initialize return dictionary
+    result = {}
+    
+    # Calculate PSD based on method
+    if method == 'multitaper':
+        try:
+            frequencies, psd = _calculate_multitaper_psd(data, fs)
+            result['frequencies'] = frequencies
+            result['psd'] = psd
+            
+        except Exception as e:
+            logging.error(f"Error calculating multitaper PSD: {str(e)}")
+            raise
+            
+    elif method == 'welch':
+        # Placeholder for future Welch implementation
+        raise NotImplementedError("Welch's method not yet implemented")
+        
+    elif method == 'fft':
+        # Placeholder for future FFT implementation
+        raise NotImplementedError("FFT method not yet implemented")
+    
+    # Apply frequency range if specified
+    if freq_range is not None:
+        fmin, fmax = freq_range
+        if not (0 <= fmin < fmax <= fs/2):
+            raise ValueError(f"Invalid frequency range: {freq_range}")
+        
+        freq_mask = (result['frequencies'] >= fmin) & (result['frequencies'] <= fmax)
+        result['frequencies'] = result['frequencies'][freq_mask]
+        result['psd'] = result['psd'][freq_mask]
+        
+    return result
+
+def _calculate_multitaper_psd(data: np.ndarray, fs: float):
+    """Calculate PSD using MNE's multitaper implementation."""
+    psds, freqs = mne.time_frequency.psd_array_multitaper(
+        data.T,
+        sfreq=fs,
+        fmin=0,
+        fmax=60,
+        n_jobs=1,
+        verbose=False,
+    )
+    
+    print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")
+    
+    print(psds.shape)
+    
+    return freqs, psds.T
+
 def calculate_sampen_for_channels(data, m=2):
     """
     Calculate Sample Entropy for each channel using antropy.
@@ -355,7 +462,6 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
             return None
         
         num_samples, num_channels = data_values.shape
-        eeg_data = data_values.T  # Convert to channels x timepoints
         
         samples_per_window = int(window_length * fs / 1000)
         
@@ -374,8 +480,8 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
         for channel in range(num_channels):
             try:
                 # Calculate spectrogram
-                f, t, Sxx = signal.spectrogram(eeg_data[channel], fs, nperseg=samples_per_window, 
-                                             noverlap=samples_per_window//2)
+                f, t, Sxx = signal.spectrogram(data_values[:, channel], fs, nperseg=samples_per_window, 
+                                              noverlap=samples_per_window//2)
                 
                 # Check if we have enough frequency resolution
                 if f[1] - f[0] > 0.5:  # First band starts at 0.5 Hz
@@ -434,45 +540,85 @@ def find_peaks(x, y, threshold_ratio=0.5):
     
     return x[significant_peaks], y[significant_peaks]
 
-def calculate_avg_peak_frequency(data, fs=256, freq_range=(4, 13), smoothing_window=5):
-    """Calculate peak frequency for each channel"""
-    data = data.T
-    num_channels, num_samples = data.shape
+def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing_window=5):
+    """
+    Calculate peak frequency using pre-computed PSD with improved peak detection.
+    
+    Parameters:
+    frequencies : numpy array
+        Frequency values
+    psd : numpy array
+        Power spectral density (frequencies × channels)
+    freq_range : tuple
+        Frequency range to search for peaks (min_freq, max_freq)
+    smoothing_window : int
+        Window size for smoothing
+        
+    Returns:
+    numpy array: Peak frequencies for each channel
+    """
+    num_channels = psd.shape[1]
     peak_frequencies = np.zeros(num_channels)
     
+    # Create frequency mask
+    freq_mask = (frequencies >= freq_range[0]) & (frequencies <= freq_range[1])
+    freq_range_idx = np.where(freq_mask)[0]
+    
+    if len(freq_range_idx) == 0:
+        logging.warning(f"No frequencies found in range {freq_range[0]}-{freq_range[1]} Hz")
+        return np.full(num_channels, np.nan)
+    
+    # Get masked frequencies and PSD
+    frequencies_masked = frequencies[freq_mask]
+    psd_masked = psd[freq_mask, :]
+    
     for channel in range(num_channels):
-        frequencies, power_spectrum = signal.welch(data[channel], fs=fs, nperseg=num_samples//2)
-        
-        freq_mask = (frequencies >= freq_range[0]) & (frequencies <= freq_range[1])
-        frequencies = frequencies[freq_mask]
-        power_spectrum = power_spectrum[freq_mask]
-        smoothed_spectrum = smooth_spectrum(frequencies, power_spectrum, smoothing_window)
-        peak_freqs, peak_powers = find_peaks(frequencies, smoothed_spectrum)
-        
-        if len(peak_freqs) > 1:
-            kde = gaussian_kde(peak_freqs, weights=peak_powers)
-            x_range = np.linspace(min(peak_freqs), max(peak_freqs), 1000)
-            kde_values = kde(x_range)
-            peak_frequencies[channel] = x_range[np.argmax(kde_values)]
-        elif len(peak_freqs) == 1:
-            peak_frequencies[channel] = peak_freqs[0]
-        else:
+        try:
+            # Get channel-specific PSD
+            channel_psd = psd_masked[:, channel]
+            
+            # Apply smoothing
+            smoothed_psd = smooth_spectrum(frequencies_masked, channel_psd, smoothing_window)
+            
+            # Find all peaks
+            peak_indices = signal.find_peaks(smoothed_psd)[0]
+            
+            if len(peak_indices) == 0:
+                # No peaks found
+                peak_frequencies[channel] = np.nan
+                continue
+            
+            # Calculate peak properties
+            peak_props = signal.peak_prominences(smoothed_psd, peak_indices)
+            prominences = peak_props[0]
+            
+            # Sort peaks by prominence
+            sorted_peak_indices = peak_indices[np.argsort(-prominences)]
+            
+            if len(sorted_peak_indices) > 0:
+                # Get the frequency of the most prominent peak
+                peak_frequencies[channel] = frequencies_masked[sorted_peak_indices[0]]
+            else:
+                peak_frequencies[channel] = np.nan
+                
+        except Exception as e:
+            logging.error(f"Error calculating peak frequency for channel {channel}: {str(e)}")
             peak_frequencies[channel] = np.nan
             
     return peak_frequencies
 
-def calculate_power_bands(data, fs=256):
+def calculate_power_bands(frequencies, psd):
     """
-    Calculate absolute and relative power in different frequency bands.
+    Calculate absolute and relative power using pre-computed PSD.
     
     Parameters:
-    data : numpy array (time points × channels)
-        EEG data array
-    fs : int
-        Sampling frequency
+    frequencies : numpy array
+        Frequency values
+    psd : numpy array
+        Power spectral density (frequencies × channels)
     
     Returns:
-    dict: Dictionary containing absolute and relative power values
+    tuple: (dict of average powers, dict of channel-level powers)
     """
     # Define frequency bands
     bands = {
@@ -483,31 +629,32 @@ def calculate_power_bands(data, fs=256):
         'beta2': (20, 30)
     }
     
-    # Initialize results dictionary
-    powers = {}
+    # Initialize results dictionaries
+    powers = {}  # For whole-brain averages
+    channel_powers = {}  # For channel-level results
     
-    # Calculate power spectral density for each channel
-    freqs, psd = signal.welch(data, fs=fs, nperseg=4*fs, axis=0)  # Specify axis=0
-    
-    # Calculate total power in 0.5-47 Hz range for relative power calculation
-    total_mask = (freqs >= 0.5) & (freqs <= 47)
-    total_power = np.sum(psd[total_mask, :], axis=0)  # Sum over frequencies
+    # Calculate total power in 0.5-47 Hz range
+    total_mask = (frequencies >= 0.5) & (frequencies <= 47)
+    total_power = np.sum(psd[total_mask, :], axis=0)
     
     # Calculate power in each band
     for band_name, (fmin, fmax) in bands.items():
-        # Find frequencies corresponding to current band
-        mask = (freqs >= fmin) & (freqs <= fmax)
+        mask = (frequencies >= fmin) & (frequencies <= fmax)
         
-        # Calculate absolute power (sum over frequencies, then mean over channels)
-        abs_power = np.sum(psd[mask, :], axis=0)  # Sum over frequencies for each channel
-        powers[f'{band_name}_abs_power'] = np.mean(abs_power)  # Mean over channels
+        # Calculate absolute power
+        abs_power = np.sum(psd[mask, :], axis=0)  # Per channel
+        powers[f'{band_name}_abs_power'] = np.mean(abs_power)  # Mean across channels
         
-        # Calculate relative power (divide by total power for each channel, then mean)
-        rel_power = abs_power / total_power  # Element-wise division
-        powers[f'{band_name}_rel_power'] = np.mean(rel_power)  # Mean over channels
+        # Calculate relative power
+        rel_power = abs_power / total_power  # Per channel
+        powers[f'{band_name}_rel_power'] = np.mean(rel_power)  # Mean across channels
+        
+        # Store channel-level results
+        channel_powers[f'{band_name}_abs_power'] = abs_power
+        channel_powers[f'{band_name}_rel_power'] = rel_power
     
-    return powers
-
+    return powers, channel_powers
+        
 def calculate_mst_measures(connectivity_matrix, used_channels=None):
     """
     Calculate MST measures from a connectivity matrix with additional error handling for disconnected graphs.
@@ -755,9 +902,9 @@ def calculate_pe(data, n=4, st=1):
         
         # Step size for moving between patterns should be fixed (e.g., 1)
         # Only the sampling interval (st) within patterns should scale with frequency
-        for i in range(0, sz-n*st, 1):  # Changed step size to 1
-            dat_array = data[i:i+n*st:st, ch]  # Keep st for within-pattern sampling
-            if len(dat_array) < n:  # Safety check
+        for i in range(0, sz-n*st, 1):
+            dat_array = data[i:i+n*st:st, ch]  
+            if len(dat_array) < n:
                 break
             dat_order = dat_array.argsort()
             rank = dat_order.argsort()
@@ -908,6 +1055,7 @@ def process_subject_condition(args):
                 time.sleep(1)
             
             try:
+                # Read data file
                 if has_headers:
                     data = pd.read_csv(file_path, sep=None, engine='python')
                     if channel_names is None:
@@ -918,18 +1066,15 @@ def process_subject_condition(args):
                     first_row = pd.read_csv(file_path, sep=None, engine='python', header=None, nrows=1)
                     is_header = False
                     
-                    # Check if first row contains any non-numeric values
                     try:
                         first_row.astype(float)
                     except (ValueError, TypeError):
                         is_header = True
                         logging.info(f"Found non-numeric header in {os.path.basename(file_path)}, ignoring first row")
                     
-                    # Read the data, skipping the first row if it was non-numeric
                     data = pd.read_csv(file_path, sep=None, engine='python', header=None, 
-                                      skiprows=1 if is_header else 0)
+                                     skiprows=1 if is_header else 0)
                     
-                    # Convert all data to numeric
                     for col in data.columns:
                         data[col] = pd.to_numeric(data[col], errors='coerce')
                     
@@ -938,75 +1083,129 @@ def process_subject_condition(args):
                         channel_names = [f"Channel_{i+1}" for i in range(n_columns)]
                         logging.info(f"{subject} - {condition}: Generated {len(channel_names)} channel names")
                     else:
-                        # Verify column count consistency
                         current_columns = len(data.columns)
                         if current_columns != len(channel_names):
                             error_msg = (f"Inconsistent number of columns in {os.path.basename(file_path)}. "
-                                        f"Expected {len(channel_names)}, found {current_columns}")
+                                       f"Expected {len(channel_names)}, found {current_columns}")
                             logging.error(error_msg)
                             raise ValueError(error_msg)
             
-                # Check if we have any NaN values after conversion
+                # Check for NaN values
                 if data.isna().any().any():
                     logging.warning(f"Found non-numeric values in {os.path.basename(file_path)} that were converted to NaN")
                 
                 data_values = data.values
                 del data
-                                            
-                # Calculate power bands if requested
-                if calc_power and '0.5-47' in condition:
+                
+                # Determine if any spectral calculations are needed
+                need_spectral = (calc_power or calc_peak or calc_sv) and '0.5-47' in condition
+                
+                if need_spectral:
                     try:
-                        powers = calculate_power_bands(data_values, fs=power_fs)
-                        for measure, value in powers.items():
-                            power_values[measure].append(value)
-                        
-                        if save_channel_averages:
-                            freqs, psd = signal.welch(data_values, fs=power_fs, nperseg=4*power_fs, axis=0)
-                            total_mask = (freqs >= 0.5) & (freqs <= 47)
-                            total_power = np.sum(psd[total_mask, :], axis=0)
-                            
-                            bands = {
-                                'delta': (0.5, 4),
-                                'theta': (4, 8),
-                                'alpha': (8, 13),
-                                'beta1': (13, 20),
-                                'beta2': (20, 30)
-                            }
-                            
-                            for band_name, (fmin, fmax) in bands.items():
-                                mask = (freqs >= fmin) & (freqs <= fmax)
-                                abs_power = np.sum(psd[mask, :], axis=0)
-                                rel_power = abs_power / total_power
-                                
-                                for ch in range(len(channel_names)):
-                                    channel_results[channel_names[ch]][f'{band_name}_abs_power'].append(abs_power[ch])
-                                    channel_results[channel_names[ch]][f'{band_name}_rel_power'].append(rel_power[ch])
-                        
-                        
-                    except Exception as e:
-                        logging.error(f"Error calculating power measures for epoch {i+1}: {str(e)}")
-                        for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                            power_values[f'{band}_abs_power'].append(np.nan)
-                            power_values[f'{band}_rel_power'].append(np.nan)
-                                
-                if calc_peak and '0.5-47' in condition:
-                    try:
-                        peak_freqs = calculate_avg_peak_frequency(
-                            data_values, 
+                        # Calculate PSDs with appropriate settings
+                        spectral_data = calculate_PSD(
+                            data=data_values,
                             fs=power_fs,
-                            freq_range=(peak_min, peak_max)
+                            method='multitaper',
+                            compute_spectrogram=calc_sv,
+                            window_length=sv_window if calc_sv else None,
+                            overlap=0.5 if calc_sv else None
                         )
-                        if save_channel_averages:
-                            for ch in range(len(channel_names)):
-                                channel_results[channel_names[ch]]['peak_frequency'].append(peak_freqs[ch])
                         
-                        n_channels_without_peak = np.sum(np.isnan(peak_freqs))
-                        power_values['peak_frequency'].append(np.nanmean(peak_freqs))
-                        power_values['channels_without_peak'].append(n_channels_without_peak)
+                        # Calculate power bands if requested
+                        if calc_power:
+                            try:
+                                powers, channel_powers = calculate_power_bands(
+                                    frequencies=spectral_data['frequencies'],
+                                    psd=spectral_data['psd']
+                                )
+                                
+                                # Store whole-brain averages (just once)
+                                for measure, value in powers.items():
+                                    power_values[measure].append(value)
+                                
+                                # Store channel-level results if requested
+                                if save_channel_averages:
+                                    for band_name in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
+                                        for ch in range(len(channel_names)):
+                                            channel_results[channel_names[ch]][f'{band_name}_abs_power'].append(
+                                                channel_powers[f'{band_name}_abs_power'][ch]
+                                            )
+                                            channel_results[channel_names[ch]][f'{band_name}_rel_power'].append(
+                                                channel_powers[f'{band_name}_rel_power'][ch]
+                                            )
+                                            
+                            except Exception as e:
+                                logging.error(f"Error calculating power measures for epoch {i+1}: {str(e)}")
+                                for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
+                                    power_values[f'{band}_abs_power'].append(np.nan)
+                                    power_values[f'{band}_rel_power'].append(np.nan)
+                        
+                        # Calculate peak frequency if requested
+                        if calc_peak:
+                            try:
+                                peak_freqs = calculate_avg_peak_frequency(
+                                    frequencies=spectral_data['frequencies'],
+                                    psd=spectral_data['psd'],
+                                    freq_range=(peak_min, peak_max)
+                                )
+                                
+                                if save_channel_averages:
+                                    for ch in range(len(channel_names)):
+                                        channel_results[channel_names[ch]]['peak_frequency'].append(peak_freqs[ch])
+                                
+                                n_channels_without_peak = np.sum(np.isnan(peak_freqs))
+                                power_values['peak_frequency'].append(np.nanmean(peak_freqs))
+                                power_values['channels_without_peak'].append(n_channels_without_peak)
+                                
+                            except Exception as e:
+                                logging.error(f"Error calculating peak frequency: {str(e)}")
+                                power_values['peak_frequency'].append(np.nan)
+                                power_values['channels_without_peak'].append(np.nan)
+                        
+                        # Calculate spectral variability if requested
+                        if calc_sv:
+                            try:
+                                sv_results = calculate_spectral_variability(
+                                    data_values=data_values,
+                                    fs=power_fs,
+                                    window_length=sv_window
+                                )
+                                
+                                if sv_results:
+                                    if save_channel_averages:
+                                        for band_name, values in sv_results.items():
+                                            band_key = f'sv_{band_name}'
+                                            for ch in range(len(channel_names)):
+                                                channel_results[channel_names[ch]][band_key].append(values[ch])
+                                    
+                                    for band_name, values in sv_results.items():
+                                        band_key = f'sv_{band_name}'
+                                        if band_key not in sv_values:
+                                            sv_values[band_key] = []
+                                        sv_values[band_key].append(np.nanmean(values))
+                                        
+                            except Exception as e:
+                                logging.error(f"Error calculating spectral variability: {str(e)}")
+                                for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
+                                    sv_values[f'sv_{band}'].append(np.nan)
+                        
+                        # Clean up spectral data
+                        del spectral_data
+                        
                     except Exception as e:
-                        power_values['peak_frequency'].append(np.nan)
-                        power_values['channels_without_peak'].append(np.nan)
-
+                        logging.error(f"Error in spectral calculations: {str(e)}")
+                        # Set all spectral measures to NaN
+                        if calc_power:
+                            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
+                                power_values[f'{band}_abs_power'].append(np.nan)
+                                power_values[f'{band}_rel_power'].append(np.nan)
+                        if calc_peak:
+                            power_values['peak_frequency'].append(np.nan)
+                            power_values['channels_without_peak'].append(np.nan)
+                        if calc_sv:
+                            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
+                                sv_values[f'sv_{band}'].append(np.nan)
                 
                 # Calculate JPE and PE
                 if calc_jpe:
@@ -1067,14 +1266,7 @@ def process_subject_condition(args):
                                               'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
                                               'ref', 'mean']:
                                     pli_mst_values[measure].append(np.nan)
-            
-                            except Exception as e:
-                                logging.error(f"Error calculating PLI MST measures for epoch {i+1}: {str(e)}")
-                                for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                              'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                              'ref', 'mean']:
-                                    pli_mst_values[measure].append(np.nan)
-                                    
+                                                
                     except Exception as e:
                         logging.error(f"Error calculating PLI: {str(e)}")
                         pli_values.append(np.nan)
@@ -1214,25 +1406,7 @@ def process_subject_condition(args):
                     except Exception as e:
                         logging.error(f"Error in ApEn calculation: {str(e)}")
                         apen_values.append(np.nan)
-                                
-                # Calculate spectral variability if requested
-                if calc_sv and '0.5-47' in condition:
-                    sv_results = calculate_spectral_variability(data_values, fs=power_fs, window_length=sv_window)
-                    if sv_results:
-                        if save_channel_averages:
-                            for band_name, values in sv_results.items():
-                                band_key = f'sv_{band_name}'
-                                for ch in range(len(channel_names)):
-                                    channel_results[channel_names[ch]][band_key].append(values[ch])
-                        
-                        for band_name, values in sv_results.items():
-                            band_key = f'sv_{band_name}'
-                            if band_key not in sv_values:
-                                sv_values[band_key] = []
-                            sv_values[band_key].append(np.nanmean(values))
                                                 
-                del data_values
-                
             except Exception as e:
                 logging.error(f"Error processing file {os.path.basename(file_path)}: {str(e)}")
                 continue
@@ -1469,7 +1643,6 @@ def process_all_subjects(grouped_files, convert_ints_pe, invert, n_threads,
                         save_matrices=False, save_mst=False, save_channel_averages=False,
                         concat_aecc=False, has_headers=True,
                         progress_callback=None):
-    """Process all subjects with improved MST tracking"""
     
     process_args = []
     for subject, conditions in grouped_files.items():
