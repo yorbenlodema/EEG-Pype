@@ -2,6 +2,7 @@ PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyia
 import PySimpleGUI as sg
 import pandas as pd
 import numpy as np
+import mne
 import os
 import itertools
 import math
@@ -282,14 +283,10 @@ def calculate_PSD(data: np.ndarray,
     
     # Calculate PSD based on method
     if method == 'multitaper':
-        time_bandwidth = kwargs.get('time_bandwidth', 4.0)
-        n_tapers = kwargs.get('n_tapers', int(2 * time_bandwidth - 1))
-        
         try:
-            frequencies, psd = _calculate_multitaper_psd(data, fs, time_bandwidth, n_tapers)
+            frequencies, psd = _calculate_multitaper_psd(data, fs)
             result['frequencies'] = frequencies
             result['psd'] = psd
-            logging.info(f"Calculated multitaper PSD with {n_tapers} tapers")
             
         except Exception as e:
             logging.error(f"Error calculating multitaper PSD: {str(e)}")
@@ -312,123 +309,25 @@ def calculate_PSD(data: np.ndarray,
         freq_mask = (result['frequencies'] >= fmin) & (result['frequencies'] <= fmax)
         result['frequencies'] = result['frequencies'][freq_mask]
         result['psd'] = result['psd'][freq_mask]
-    
-    # Calculate spectrogram if requested
-    if compute_spectrogram:
-        try:
-            window_length = kwargs.get('window_length', 2000)  # default 2000ms
-            overlap = kwargs.get('overlap', 0.5)  # default 50% overlap
-            
-            times, spect = _calculate_spectrogram(data, fs, window_length, overlap)
-            result['spectrogram'] = spect
-            result['times'] = times
-            logging.info("Calculated spectrogram")
-            
-        except Exception as e:
-            logging.error(f"Error calculating spectrogram: {str(e)}")
-            raise
-    
+        
     return result
 
-def _calculate_multitaper_psd(data: np.ndarray,
-                            fs: float,
-                            time_bandwidth: float,
-                            n_tapers: int) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calculate PSD using multitaper method.
+def _calculate_multitaper_psd(data: np.ndarray, fs: float):
+    """Calculate PSD using MNE's multitaper implementation."""
+    psds, freqs = mne.time_frequency.psd_array_multitaper(
+        data.T,
+        sfreq=fs,
+        fmin=0,
+        fmax=60,
+        n_jobs=1,
+        verbose=False,
+    )
     
-    Parameters
-    ----------
-    data : np.ndarray
-        Time series data (samples x channels)
-    fs : float
-        Sampling frequency
-    time_bandwidth : float
-        Time-bandwidth product
-    n_tapers : int
-        Number of tapers to use
-        
-    Returns
-    -------
-    frequencies : np.ndarray
-        Frequency values
-    psd : np.ndarray
-        Power spectral density estimates (frequencies x channels)
-    """
-    n_samples, n_channels = data.shape
+    print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")
     
-    # Initialize output array
-    psd = np.zeros((n_samples//2 + 1, n_channels))
+    print(psds.shape)
     
-    # Process each channel
-    for ch in range(n_channels):
-        frequencies, channel_psd = signal.multitaper.pmtm(
-            data[:, ch],
-            NW=time_bandwidth,
-            k=n_tapers,
-            fs=fs,
-            return_onesided=True
-        )
-        psd[:, ch] = channel_psd
-        
-        if ch == 0:  # Save frequencies from first channel
-            freq_values = frequencies
-            
-    return freq_values, psd
-
-def _calculate_spectrogram(data: np.ndarray,
-                         fs: float,
-                         window_length: int,
-                         overlap: float) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calculate spectrogram using multitaper method.
-    
-    Parameters
-    ----------
-    data : np.ndarray
-        Time series data (samples x channels)
-    fs : float
-        Sampling frequency
-    window_length : int
-        Length of window in milliseconds
-    overlap : float
-        Overlap between windows (0 to 1)
-        
-    Returns
-    -------
-    times : np.ndarray
-        Time points
-    spectrogram : np.ndarray
-        Time-frequency representation
-    """
-    # Convert window length from ms to samples
-    nperseg = int(window_length * fs / 1000)
-    noverlap = int(nperseg * overlap)
-    
-    # Calculate spectrogram for each channel
-    n_channels = data.shape[1]
-    first_run = True
-    
-    for ch in range(n_channels):
-        f, t, sxx = signal.spectrogram(
-            data[:, ch],
-            fs=fs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window='hann',
-            detrend='constant'
-        )
-        
-        if first_run:
-            # Initialize arrays with correct dimensions
-            frequencies = f
-            times = t
-            spectrogram = np.zeros((len(f), len(t), n_channels))
-            first_run = False
-            
-        spectrogram[:, :, ch] = sxx
-        
-    return times, spectrogram
+    return freqs, psds.T
 
 def calculate_sampen_for_channels(data, m=2):
     """
@@ -539,63 +438,94 @@ def _phi_vectorized(x, m, r):
     # Calculate Φᵐ(r) with small constant to avoid log(0)
     return np.mean(np.log(C + 1e-10))
 
-def calculate_spectral_variability(times, spectrogram, frequencies):
+def calculate_spectral_variability(data_values, fs, window_length=2000):
     """
-    Calculate spectral variability using pre-computed spectrogram.
+    Calculate spectral variability per channel from broadband data.
+    For each frequency band, calculates how much its relative power varies over time.
     
     Parameters:
-    times : numpy array
-        Time points
-    spectrogram : numpy array
-        Time-frequency representation (frequencies × times × channels)
-    frequencies : numpy array
-        Frequency values
+    -----------
+    data_values : numpy array (time points × channels)
+        Broadband EEG data
+    fs : float
+        Sampling frequency in Hz
+    window_length : int
+        Length of window in milliseconds
         
     Returns:
-    dict : Dictionary with CV values for each band
+    --------
+    dict : Dictionary with CV values for each band, or None if calculation fails
     """
-    # Define frequency bands
-    bands = {
-        'delta': (0.5, 4),
-        'theta': (4, 8),
-        'alpha': (8, 13),
-        'beta1': (13, 20),
-        'beta2': (20, 30),
-    }
-    
-    # Initialize results
-    cv_values = {band: np.zeros(spectrogram.shape[2]) for band in bands}
-    
-    # Calculate total power mask
-    total_mask = (frequencies >= 0.5) & (frequencies <= 47)
-    
-    for channel in range(spectrogram.shape[2]):
-        try:
-            # Calculate band powers over time
-            for band_name, (low_freq, high_freq) in bands.items():
-                band_mask = (frequencies >= low_freq) & (frequencies < high_freq)
+    try:
+        if data_values.shape[0] < window_length:
+            logging.warning(f"Data length ({data_values.shape[0]}) shorter than window length ({window_length})")
+            return None
+        
+        num_samples, num_channels = data_values.shape
+        
+        samples_per_window = int(window_length * fs / 1000)
+        
+        # Define frequency bands
+        bands = {
+            'delta': (0.5, 4),
+            'theta': (4, 8),
+            'alpha': (8, 13),
+            'beta1': (13, 20),
+            'beta2': (20, 30),
+        }
+        
+        # Initialize results
+        cv_values = {band: np.zeros(num_channels) for band in bands}
+        
+        for channel in range(num_channels):
+            try:
+                # Calculate spectrogram
+                f, t, Sxx = signal.spectrogram(data_values[:, channel], fs, nperseg=samples_per_window, 
+                                              noverlap=samples_per_window//2)
                 
-                # Calculate band power over time
-                band_power = np.sum(spectrogram[band_mask, :, channel], axis=0)
-                total_power = np.sum(spectrogram[total_mask, :, channel], axis=0)
+                # Check if we have enough frequency resolution
+                if f[1] - f[0] > 0.5:  # First band starts at 0.5 Hz
+                    logging.warning(f"Frequency resolution too low: {f[1] - f[0]:.2f} Hz. Consider increasing window length.")
                 
-                # Calculate relative power over time
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    relative_power = np.where(total_power > 0, band_power / total_power, 0)
+                # Calculate total power across all frequencies up to 47 Hz
+                total_mask = (f >= 0.5) & (f <= 47)
+                if not np.any(total_mask):
+                    logging.error("No frequencies found in broadband range (0.5-47 Hz)")
+                    return None
                 
-                # Calculate coefficient of variation
-                if np.all(relative_power == 0):
-                    cv_values[band_name][channel] = np.nan
-                else:
-                    cv = np.std(relative_power) / np.mean(relative_power)
-                    cv_values[band_name][channel] = cv
+                # Calculate relative power for each band over time
+                for band_name, (low_freq, high_freq) in bands.items():
+                    band_mask = (f >= low_freq) & (f < high_freq)
+                    if not np.any(band_mask):
+                        logging.warning(f"No frequencies found in {band_name} band ({low_freq}-{high_freq} Hz)")
+                        cv_values[band_name][channel] = np.nan
+                        continue
+                        
+                    # Calculate band power over time
+                    band_power = np.sum(Sxx[band_mask, :], axis=0)
+                    total_power = np.sum(Sxx[total_mask, :], axis=0)
                     
-        except Exception as e:
-            logging.error(f"Error processing channel {channel}: {str(e)}")
-            for band in bands:
-                cv_values[band][channel] = np.nan
-    
-    return cv_values
+                    # Avoid division by zero
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        relative_power = np.where(total_power > 0, band_power / total_power, 0)
+                    
+                    # Calculate coefficient of variation
+                    if np.all(relative_power == 0):
+                        cv_values[band_name][channel] = np.nan
+                    else:
+                        cv = np.std(relative_power) / np.mean(relative_power)
+                        cv_values[band_name][channel] = cv
+                        
+            except Exception as e:
+                logging.error(f"Error processing channel {channel}: {str(e)}")
+                for band in bands:
+                    cv_values[band][channel] = np.nan
+                
+        return cv_values
+        
+    except Exception as e:
+        logging.error(f"Error in spectral variability calculation: {str(e)}")
+        return None
 
 def smooth_spectrum(frequencies, power_spectrum, smoothing_window=5):
     """Apply moving average smoothing to power spectrum"""
@@ -612,7 +542,7 @@ def find_peaks(x, y, threshold_ratio=0.5):
 
 def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing_window=5):
     """
-    Calculate peak frequency using pre-computed PSD.
+    Calculate peak frequency using pre-computed PSD with improved peak detection.
     
     Parameters:
     frequencies : numpy array
@@ -620,7 +550,7 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
     psd : numpy array
         Power spectral density (frequencies × channels)
     freq_range : tuple
-        Frequency range to search for peaks
+        Frequency range to search for peaks (min_freq, max_freq)
     smoothing_window : int
         Window size for smoothing
         
@@ -632,21 +562,47 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
     
     # Create frequency mask
     freq_mask = (frequencies >= freq_range[0]) & (frequencies <= freq_range[1])
-    frequencies = frequencies[freq_mask]
-    psd = psd[freq_mask, :]
+    freq_range_idx = np.where(freq_mask)[0]
+    
+    if len(freq_range_idx) == 0:
+        logging.warning(f"No frequencies found in range {freq_range[0]}-{freq_range[1]} Hz")
+        return np.full(num_channels, np.nan)
+    
+    # Get masked frequencies and PSD
+    frequencies_masked = frequencies[freq_mask]
+    psd_masked = psd[freq_mask, :]
     
     for channel in range(num_channels):
-        smoothed_spectrum = smooth_spectrum(frequencies, psd[:, channel], smoothing_window)
-        peak_freqs, peak_powers = find_peaks(frequencies, smoothed_spectrum)
-        
-        if len(peak_freqs) > 1:
-            kde = gaussian_kde(peak_freqs, weights=peak_powers)
-            x_range = np.linspace(min(peak_freqs), max(peak_freqs), 1000)
-            kde_values = kde(x_range)
-            peak_frequencies[channel] = x_range[np.argmax(kde_values)]
-        elif len(peak_freqs) == 1:
-            peak_frequencies[channel] = peak_freqs[0]
-        else:
+        try:
+            # Get channel-specific PSD
+            channel_psd = psd_masked[:, channel]
+            
+            # Apply smoothing
+            smoothed_psd = smooth_spectrum(frequencies_masked, channel_psd, smoothing_window)
+            
+            # Find all peaks
+            peak_indices = signal.find_peaks(smoothed_psd)[0]
+            
+            if len(peak_indices) == 0:
+                # No peaks found
+                peak_frequencies[channel] = np.nan
+                continue
+            
+            # Calculate peak properties
+            peak_props = signal.peak_prominences(smoothed_psd, peak_indices)
+            prominences = peak_props[0]
+            
+            # Sort peaks by prominence
+            sorted_peak_indices = peak_indices[np.argsort(-prominences)]
+            
+            if len(sorted_peak_indices) > 0:
+                # Get the frequency of the most prominent peak
+                peak_frequencies[channel] = frequencies_masked[sorted_peak_indices[0]]
+            else:
+                peak_frequencies[channel] = np.nan
+                
+        except Exception as e:
+            logging.error(f"Error calculating peak frequency for channel {channel}: {str(e)}")
             peak_frequencies[channel] = np.nan
             
     return peak_frequencies
@@ -662,7 +618,7 @@ def calculate_power_bands(frequencies, psd):
         Power spectral density (frequencies × channels)
     
     Returns:
-    dict: Dictionary containing absolute and relative power values
+    tuple: (dict of average powers, dict of channel-level powers)
     """
     # Define frequency bands
     bands = {
@@ -673,28 +629,32 @@ def calculate_power_bands(frequencies, psd):
         'beta2': (20, 30)
     }
     
-    # Initialize results dictionary
-    powers = {}
+    # Initialize results dictionaries
+    powers = {}  # For whole-brain averages
+    channel_powers = {}  # For channel-level results
     
-    # Calculate total power in 0.5-47 Hz range for relative power calculation
+    # Calculate total power in 0.5-47 Hz range
     total_mask = (frequencies >= 0.5) & (frequencies <= 47)
     total_power = np.sum(psd[total_mask, :], axis=0)
     
     # Calculate power in each band
     for band_name, (fmin, fmax) in bands.items():
-        # Find frequencies corresponding to current band
         mask = (frequencies >= fmin) & (frequencies <= fmax)
         
         # Calculate absolute power
-        abs_power = np.sum(psd[mask, :], axis=0)  # Sum over frequencies for each channel
-        powers[f'{band_name}_abs_power'] = np.mean(abs_power)  # Mean over channels
+        abs_power = np.sum(psd[mask, :], axis=0)  # Per channel
+        powers[f'{band_name}_abs_power'] = np.mean(abs_power)  # Mean across channels
         
         # Calculate relative power
-        rel_power = abs_power / total_power  # Element-wise division
-        powers[f'{band_name}_rel_power'] = np.mean(rel_power)  # Mean over channels
+        rel_power = abs_power / total_power  # Per channel
+        powers[f'{band_name}_rel_power'] = np.mean(rel_power)  # Mean across channels
+        
+        # Store channel-level results
+        channel_powers[f'{band_name}_abs_power'] = abs_power
+        channel_powers[f'{band_name}_rel_power'] = rel_power
     
-    return powers
-
+    return powers, channel_powers
+        
 def calculate_mst_measures(connectivity_matrix, used_channels=None):
     """
     Calculate MST measures from a connectivity matrix with additional error handling for disconnected graphs.
@@ -1155,34 +1115,25 @@ def process_subject_condition(args):
                         # Calculate power bands if requested
                         if calc_power:
                             try:
-                                powers = calculate_power_bands(
+                                powers, channel_powers = calculate_power_bands(
                                     frequencies=spectral_data['frequencies'],
                                     psd=spectral_data['psd']
                                 )
                                 
+                                # Store whole-brain averages (just once)
                                 for measure, value in powers.items():
                                     power_values[measure].append(value)
                                 
+                                # Store channel-level results if requested
                                 if save_channel_averages:
-                                    total_mask = (spectral_data['frequencies'] >= 0.5) & (spectral_data['frequencies'] <= 47)
-                                    total_power = np.sum(spectral_data['psd'][total_mask, :], axis=0)
-                                    
-                                    bands = {
-                                        'delta': (0.5, 4),
-                                        'theta': (4, 8),
-                                        'alpha': (8, 13),
-                                        'beta1': (13, 20),
-                                        'beta2': (20, 30)
-                                    }
-                                    
-                                    for band_name, (fmin, fmax) in bands.items():
-                                        mask = (spectral_data['frequencies'] >= fmin) & (spectral_data['frequencies'] <= fmax)
-                                        abs_power = np.sum(spectral_data['psd'][mask, :], axis=0)
-                                        rel_power = abs_power / total_power
-                                        
+                                    for band_name in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
                                         for ch in range(len(channel_names)):
-                                            channel_results[channel_names[ch]][f'{band_name}_abs_power'].append(abs_power[ch])
-                                            channel_results[channel_names[ch]][f'{band_name}_rel_power'].append(rel_power[ch])
+                                            channel_results[channel_names[ch]][f'{band_name}_abs_power'].append(
+                                                channel_powers[f'{band_name}_abs_power'][ch]
+                                            )
+                                            channel_results[channel_names[ch]][f'{band_name}_rel_power'].append(
+                                                channel_powers[f'{band_name}_rel_power'][ch]
+                                            )
                                             
                             except Exception as e:
                                 logging.error(f"Error calculating power measures for epoch {i+1}: {str(e)}")
@@ -1216,9 +1167,9 @@ def process_subject_condition(args):
                         if calc_sv:
                             try:
                                 sv_results = calculate_spectral_variability(
-                                    times=spectral_data['times'],
-                                    spectrogram=spectral_data['spectrogram'],
-                                    frequencies=spectral_data['frequencies']
+                                    data_values=data_values,
+                                    fs=power_fs,
+                                    window_length=sv_window
                                 )
                                 
                                 if sv_results:
