@@ -83,15 +83,29 @@ def create_gui():
                 text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(20, 10))]
     ]
     
+    # Column 1: Input Settings and Matrix Export
     left_column = [
         [sg.Frame('Input Settings', [
             [sg.Text("Select data folder:", font=('Helvetica', 11, 'bold'), background_color=MAIN_BG)],
-            [sg.Input(key="-FOLDER-", size=(30, 1)), sg.FolderBrowse(button_color=BUTTON_COLOR)],
-            [sg.Text("Folder extension:", background_color=MAIN_BG), sg.Input(FOLDER_EXTENSION, key="-EXTENSION-", size=(10, 1))],
+            [sg.Input(key="-FOLDER-", size=(25, 1)), sg.FolderBrowse(button_color=BUTTON_COLOR)],
+            [sg.Text("Folder extension:", background_color=MAIN_BG), sg.Input(FOLDER_EXTENSION, key="-EXTENSION-", size=(8, 1))],
             [sg.Text("Processing threads:", background_color=MAIN_BG), sg.Input(suggested_threads, key="-THREADS-", size=(5, 1))],
             [sg.Checkbox("Epoch files have headers", key="-HAS_HEADERS-", default=True, background_color=MAIN_BG)],
         ], background_color=MAIN_BG)],
-                
+        
+        [sg.Frame('Matrix Export', [
+            [sg.Checkbox("Save connectivity matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG)],
+            [sg.Text("Matrix folder:", background_color=MAIN_BG), 
+             sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(15, 1))],
+            [sg.Checkbox("Save MST matrices", key="-SAVE_MST-", default=False, background_color=MAIN_BG)],
+            [sg.Text("MST folder:", background_color=MAIN_BG), 
+             sg.Input("mst_matrices", key="-MST_FOLDER-", size=(15, 1))],
+            [sg.Checkbox("Save channel-level averages", key="-SAVE_CHANNEL_AVERAGES-", default=False, background_color=MAIN_BG)],
+        ], background_color=MAIN_BG)],
+    ]
+    
+    # Column 2: Complexity Measures
+    middle_column = [
         [sg.Frame('Complexity Measures', [
             [sg.Checkbox("Calculate JPE/PE", key="-CALC_JPE-", default=False, background_color=MAIN_BG)],
             [sg.Text("Time step (tau):", background_color=MAIN_BG), sg.Input("1", key="-JPE_ST-", size=(5, 1))],
@@ -103,24 +117,15 @@ def create_gui():
             [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("1", key="-APEN_M-", size=(3, 1))],
             [sg.Text("Tolerance (r):", background_color=MAIN_BG), sg.Input("0.25", key="-APEN_R-", size=(3, 1))],
         ], background_color=MAIN_BG)],
-                        
-        [sg.Frame('Matrix Export', [
-            [sg.Checkbox("Save connectivity matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG)],
-            [sg.Text("Matrix folder name:", background_color=MAIN_BG), 
-             sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(20, 1))],
-            [sg.Checkbox("Save MST matrices", key="-SAVE_MST-", default=False, background_color=MAIN_BG)],
-            [sg.Text("MST folder name:", background_color=MAIN_BG), 
-             sg.Input("mst_matrices", key="-MST_FOLDER-", size=(20, 1))],
-            [sg.Checkbox("Save channel-level averages", key="-SAVE_CHANNEL_AVERAGES-", default=False, background_color=MAIN_BG)],
-        ], background_color=MAIN_BG)],
     ]
     
+    # Column 3: Spectral Analysis and Connectivity
     right_column = [
         [sg.Frame('Spectral Analysis', [
             [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
             [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG)],
-            [sg.Text("Freq range (Hz):", background_color=MAIN_BG), 
+            [sg.Text("Freq range:", background_color=MAIN_BG), 
              sg.Input("4", key="-PEAK_MIN-", size=(4, 1)), 
              sg.Text("-", background_color=MAIN_BG),
              sg.Input("13", key="-PEAK_MAX-", size=(4, 1))],
@@ -141,7 +146,7 @@ def create_gui():
     
     progress_section = [
         [sg.Frame('Progress', [
-            [sg.Multiline(size=(70, 8), key='-LOG-', autoscroll=True, reroute_stdout=True,
+            [sg.Multiline(size=(70, 6), key='-LOG-', autoscroll=True, reroute_stdout=True,
                          disabled=True, background_color='#FFFFFF', text_color='#000000')],
             [sg.ProgressBar(100, orientation='h', size=(60, 20), key='-PROGRESS-',
                           bar_color=(HEADER_BG, MAIN_BG))],
@@ -156,8 +161,9 @@ def create_gui():
     layout = [
         [sg.Column(header, background_color=HEADER_BG, expand_x=True)],
         [sg.Column([
-            [sg.Column(left_column, background_color=MAIN_BG, pad=(10, 5)),
-             sg.Column(right_column, background_color=MAIN_BG, pad=(10, 5))],
+            [sg.Column(left_column, background_color=MAIN_BG, pad=(5, 5)),
+             sg.Column(middle_column, background_color=MAIN_BG, pad=(5, 5)),
+             sg.Column(right_column, background_color=MAIN_BG, pad=(5, 5))],
             [sg.Column(progress_section, background_color=MAIN_BG, pad=(0, 5))]
         ], background_color=MAIN_BG, pad=(20, 20))]
     ]
