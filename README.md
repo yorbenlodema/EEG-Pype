@@ -13,13 +13,15 @@ The software is currently able to:
 - Apply beamformer source reconstruction to the EEG (standard MNE LCMV beamformer with standard head model).
 - Down sample the file to a lower sample frequency by specifying a downsample factor (like a foctor of 4: from 2048 Hz to 512 Hz for example).
 - Perform interactive visual epoch selection.
-- Perform filtering in different frequency bands and broadband output. These bands can be changed for the current batch in the GUI or more permanently in the settings file (see under tips and issues).
+- Perform filtering in different frequency bands and broadband output. These bands can be changed for the current batch in the GUI or more permanently in the settings file (see under tips and issues). The EEGs are filtered before cutting epochs, reducing edge artifacts.
+- Split alpha and beta bands into sub-bands (alpha1/alpha2 and beta1/beta2) for more detailed frequency analysis.
 - After performing analyses on a batch, rerun the batch with preservation of channel and epoch selection. To do this, select the previously created .pkl file.
 - Log the chosen settings and performed analyses steps in a log file.
+- Correct channel names to match expected montage names through an interactive find/replace interface.
+
 
 The software is not (yet) able to:
 - Analyse task EEG data.
-- Calculate quantitative features on the output epochs (coming in the near future).
 - Open EEG files with data types not mentioned previously (you can put this in a new GitHub issue if you need to load another EEG filetype).
 
 In addition, we later added a quantitative analysis script, which allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing software. See below for more details.  
@@ -38,6 +40,10 @@ There is currently an unresolved problem where removing multiple ICA components 
 When using Spyder IDE to run the program (like we do), initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
 
 It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script. 
+
+When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied consistently across your entire batch of files. It is important to have the same channel names for the entire batch of EEGs that you load at once.
+
+The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
 
 ## Installation
 
@@ -213,6 +219,53 @@ The EEG Quantitative Analysis Tool is a GUI-based application for calculating va
 - Leaf fraction: Proportion of nodes with degree 1.
 - Tree hierarchy: Balance between network integration and overload prevention.
 - Additional measures: Diameter, kappa (degree divergence), mean edge weight.
+
+### Spectral Analysis Methods
+The tool now supports multiple methods for spectral analysis:
+1. Multitaper Method (Default)
+- Provides optimal frequency resolution.
+- Best for detecting narrow-band signals.
+- Uses MNE's implementation.
+- Parameters automatically optimized.
+
+2. Welch's Method
+- Reduces noise through averaging.
+- Configurable parameters:
+   - Window length (ms)
+   - Overlap percentage
+- Better for smooth spectra.
+- Good for longer recordings.
+
+3. FFT Method
+- Direct Fast Fourier Transform.
+- Uses Hanning window.
+- Fastest computation.
+
+Method selection and parameters can be configured through the GUI:
+- Choose method from dropdown.
+- Welch parameters appear when selected:
+   - Window length in milliseconds (default: 1000ms)
+   - Overlap percentage (default: 50%)
+
+The selected method affects (this PSD method is used for):
+- Power band calculations.
+- Peak frequency detection.
+
+### Custom Frequency Bands
+The tool allows customization of frequency bands used for both epoch recognition and spectral analysis. Bands are configured in the FREQUENCY_BANDS dictionary in the main script. Please be careful when changing these since doing so can easily break a lot of the logic in the code.
+
+Each band requires:
+
+- A unique name (e.g., "delta", "theta").
+- Pattern: Regular expression to match band names in epoch filenames.
+- Range: Tuple of (min_freq, max_freq) in Hz for calculations.
+
+Notes:
+
+- The "broadband" band is required and used for power/spectral variability calculations. You can also used unfiltered epochs for this though you should make sure they are recognized as broadband.
+- You can add custom bands following the same format.
+- Patterns should match your epoch filename format.
+- Ranges must be within Nyquist frequency (sampling_rate/2).
 
 ### Output Options
 1. **Excel Results**
