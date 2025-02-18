@@ -214,12 +214,10 @@ def create_gui():
         [sg.Frame('Spectral Analysis', [
             [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
             [sg.Text("PSD Method:", background_color=MAIN_BG),
-             sg.Combo(['Multitaper', 'Welch', 'FFT'], default_value='Multitaper', key="-PSD_METHOD-", size=(10, 1), enable_events=True)],
-            # Welch parameters (initially hidden)
-            [sg.pin(sg.Column([
-                [sg.Text("Welch window (ms):", background_color=MAIN_BG), sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1))],
-                [sg.Text("Welch overlap (%):", background_color=MAIN_BG), sg.Input("50", key="-WELCH_OVERLAP-", size=(6, 1))]
-            ], key='-WELCH_PARAMS-', visible=False, background_color=MAIN_BG))],
+             sg.Combo(['Multitaper', 'Welch', 'FFT'], default_value='Multitaper', key="-PSD_METHOD-", size=(10, 1))],
+            [sg.Text("Welch parameters (only used if Welch method selected):", background_color=MAIN_BG, font=('Helvetica', 9, 'italic'))],
+            [sg.Text("Welch window (ms):", background_color=MAIN_BG), sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1))],
+            [sg.Text("Welch overlap (%):", background_color=MAIN_BG), sg.Input("50", key="-WELCH_OVERLAP-", size=(6, 1))],
             [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG)],
             [sg.Text("Freq range:", background_color=MAIN_BG), 
@@ -2410,7 +2408,6 @@ def main():
             break
         
         if event == "-PSD_METHOD-":  # When PSD method changes
-            window['-WELCH_PARAMS-'].update(visible=values["-PSD_METHOD-"] == "welch")
             window.refresh()
     
         if event == "Process":
