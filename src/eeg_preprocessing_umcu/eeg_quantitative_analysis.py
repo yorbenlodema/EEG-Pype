@@ -17,9 +17,8 @@ from scipy.signal import hilbert
 import networkx as nx
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy import signal
-from scipy.stats import gaussian_kde
 from antropy import sample_entropy
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 import sys
 
 # Configuration
@@ -77,7 +76,7 @@ def validate_frequency_bands():
             raise ValueError(f"Band {band_name} pattern must be a string")
 
 BATCH_SIZE = 10  # Number of subjects to process in parallel
-DEFAULT_THREADS = max(1, int(cpu_count() * 0.8))  # Use 80% of cores, no max limit
+DEFAULT_THREADS = max(1, int(cpu_count() * 0.7))  # Use 80% of cores, no max limit
 
 class MemoryMonitor:
     @staticmethod
