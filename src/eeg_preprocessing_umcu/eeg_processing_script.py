@@ -19,6 +19,7 @@ from mne.preprocessing import ICA
 from datetime import datetime
 from mne.beamformer import apply_lcmv_raw, make_lcmv
 from mne.datasets import fetch_fsaverage
+from itertools import zip_longest
 
 from eeg_processing_settings import *
 
@@ -34,7 +35,7 @@ settings=settings # taken from settings
 filter_settings=filter_settings
 my_image=my_image # taken from settings
 
-EEG_version = "v4.0"
+EEG_version = "v4.1"
 
 # initial values
 progress_value1 = 20
@@ -169,14 +170,21 @@ def update_frequency_bands(config):
     '''     Function to show and allow user to modify frequency bands.     '''
     tooltip=""
     layout = [
-        [sg.Text(
-            "Frequency bands", tooltip=tooltip,font=font, background_color='white')],
+        [sg.Text("Frequency bands", tooltip=tooltip,font=font, background_color='white')],
         [sg.Text('delta_low     ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','delta_low'], key='-FILTER_DL-',size=f_size),
          sg.Text('delta_high    ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','delta_high'], key='-FILTER_DH-',size=f_size)],
         [sg.Text('theta_low     ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','theta_low'], key='-FILTER_TL-',size=f_size),
          sg.Text('theta_high    ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','theta_high'], key='-FILTER_TH-',size=f_size)],
+        [sg.Checkbox('Split Alpha Band', default=config.get('use_split_alpha', False), key='-SPLIT_ALPHA-', background_color='white')],
         [sg.Text('alpha_low     ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','alpha_low'], key='-FILTER_AL-',size=f_size),
          sg.Text('alpha_high    ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','alpha_high'], key='-FILTER_AH-',size=f_size)],
+        [sg.Text('alpha1_low    ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','alpha1_low'], key='-FILTER_A1L-',size=f_size),
+         sg.Text('alpha1_high   ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','alpha1_high'], key='-FILTER_A1H-',size=f_size)],
+        [sg.Text('alpha2_low    ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','alpha2_low'], key='-FILTER_A2L-',size=f_size),
+         sg.Text('alpha2_high   ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','alpha2_high'], key='-FILTER_A2H-',size=f_size)],
+        [sg.Checkbox('Split Beta Band', default=config.get('use_split_beta', False), key='-SPLIT_BETA-', background_color='white')],
+        [sg.Text('beta_low      ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','beta_low'], key='-FILTER_BL-',size=f_size),
+         sg.Text('beta_high     ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','beta_high'], key='-FILTER_BH-',size=f_size)],
         [sg.Text('beta1_low     ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','beta1_low'], key='-FILTER_B1L-',size=f_size),
          sg.Text('beta1_high    ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','beta1_high'], key='-FILTER_B1H-',size=f_size)],
         [sg.Text('beta2_low     ', background_color='white'), sg.Input(default_text= config['cut_off_frequency','beta2_low'], key='-FILTER_B2L-',size=f_size),
@@ -191,18 +199,28 @@ def update_frequency_bands(config):
         event, values = window.read()
         if event == 'Select':
             try:
+                config['use_split_alpha'] = values['-SPLIT_ALPHA-']
+                config['use_split_beta'] = values['-SPLIT_BETA-']
+                
+                # Store all frequency values
                 config['cut_off_frequency',"delta_low"] = values["-FILTER_DL-"]
                 config['cut_off_frequency',"delta_high"] = values["-FILTER_DH-"]
-                config['cut_off_frequency',"theta_low"]= values['-FILTER_TL-']
-                config['cut_off_frequency',"theta_high"]= values['-FILTER_TH-']
-                config['cut_off_frequency',"alpha_low"]= values['-FILTER_AL-']
-                config['cut_off_frequency',"alpha_high"]= values['-FILTER_AH-']
-                config['cut_off_frequency',"beta1_low"]= values['-FILTER_B1L-']
-                config['cut_off_frequency',"beta1_high"]= values['-FILTER_B1H-']
-                config['cut_off_frequency',"beta2_low"]= values['-FILTER_B2L-']
-                config['cut_off_frequency',"beta2_high"]= values['-FILTER_B2H-']
-                config['cut_off_frequency',"broadband_low"]= values['-FILTER_BRL-']
-                config['cut_off_frequency',"broadband_high"]= values['-FILTER_BRH-']
+                config['cut_off_frequency',"theta_low"] = values['-FILTER_TL-']
+                config['cut_off_frequency',"theta_high"] = values['-FILTER_TH-']
+                config['cut_off_frequency',"alpha_low"] = values['-FILTER_AL-']
+                config['cut_off_frequency',"alpha_high"] = values['-FILTER_AH-']
+                config['cut_off_frequency',"alpha1_low"] = values['-FILTER_A1L-']
+                config['cut_off_frequency',"alpha1_high"] = values['-FILTER_A1H-']
+                config['cut_off_frequency',"alpha2_low"] = values['-FILTER_A2L-']
+                config['cut_off_frequency',"alpha2_high"] = values['-FILTER_A2H-']
+                config['cut_off_frequency',"beta_low"] = values['-FILTER_BL-']
+                config['cut_off_frequency',"beta_high"] = values['-FILTER_BH-']
+                config['cut_off_frequency',"beta1_low"] = values['-FILTER_B1L-']
+                config['cut_off_frequency',"beta1_high"] = values['-FILTER_B1H-']
+                config['cut_off_frequency',"beta2_low"] = values['-FILTER_B2L-']
+                config['cut_off_frequency',"beta2_high"] = values['-FILTER_B2H-']
+                config['cut_off_frequency',"broadband_low"] = values['-FILTER_BRL-']
+                config['cut_off_frequency',"broadband_high"] = values['-FILTER_BRH-']
                 config['frequency_bands_modified'] = 1
                 break
             except:
@@ -212,6 +230,41 @@ def update_frequency_bands(config):
             break
     window.close()
     return config
+
+def get_active_frequency_bands(config):
+    """
+    Returns a list of tuples containing the active frequency band pairs based on toggle settings.
+    """
+    active_bands = []
+    
+    # Always include delta and theta
+    active_bands.extend([
+        ("delta_low", "delta_high"),
+        ("theta_low", "theta_high")
+    ])
+    
+    # Add alpha bands based on toggle
+    if config['use_split_alpha']:
+        active_bands.extend([
+            ("alpha1_low", "alpha1_high"),
+            ("alpha2_low", "alpha2_high")
+        ])
+    else:
+        active_bands.append(("alpha_low", "alpha_high"))
+    
+    # Add beta bands based on toggle
+    if config['use_split_beta']:
+        active_bands.extend([
+            ("beta1_low", "beta1_high"),
+            ("beta2_low", "beta2_high")
+        ])
+    else:
+        active_bands.append(("beta_low", "beta_high"))
+    
+    # Always include broadband
+    active_bands.append(("broadband_low", "broadband_high"))
+    
+    return active_bands
 
 def select_output_directory(config):
     '''     Function to set Output folder for exported EEG data and log files.     '''
@@ -397,6 +450,123 @@ def select_channels_to_be_dropped(in_list):
             break
     window.close()
     return out_list
+
+def implement_channel_corrections(raw, config):
+    """
+    Implements channel corrections at batch level after dropping redundant channels.
+    Returns the raw object with corrected channel names and updated config.
+    """
+    if config['rerun'] == 1 and 'channel_corrections' in config:
+        # Apply saved corrections from previous run
+        for old_name, new_name in config['channel_corrections'].items():
+            if old_name in raw.ch_names:
+                raw.rename_channels({old_name: new_name})
+        return raw, config
+    
+    # For first run or if no corrections exist
+    montage_name = settings['montage', config['input_file_pattern']]
+    corrected_names = show_channel_correction_window(raw, montage_name, settings)
+    
+    if corrected_names is None:  # User cancelled
+        return raw, config
+    
+    # Store the corrections in config for reuse
+    config['channel_corrections'] = dict(zip(raw.ch_names, corrected_names))
+    
+    # Apply the corrections
+    for old_name, new_name in zip(raw.ch_names, corrected_names):
+        raw.rename_channels({old_name: new_name})
+    
+    return raw, config
+
+def get_expected_channels(montage_name):
+    """Returns the expected channel names for a given montage from settings."""
+    try:
+        return settings['channel_names', montage_name]
+    except KeyError:
+        msg = f"Warning: Channel names for montage '{montage_name}' not found in settings"
+        window['-RUN_INFO-'].update(msg+'\n', append=True)
+        return []  # Return empty list if montage not found
+
+def show_channel_correction_window(raw, montage_name, settings):
+    """Shows a window for correcting channel names to match the selected montage."""
+    
+    # Get expected channel names for the selected montage
+    expected_channels = get_expected_channels(montage_name)
+    current_channels = raw.ch_names
+    
+    # Create layout for the correction window
+    layout = [
+        [sg.Text("Batch Channel Name Correction", font=('Default', 16, 'bold'))],
+        [sg.Text("These corrections will be applied to all files in the batch", font=('Default', 12))],
+        
+        # Search and replace
+        [sg.Frame("Search and Replace", [
+            [sg.Text("Find:"), sg.Input(key='-FIND-', size=(20,1)),
+             sg.Text("Replace:"), sg.Input(key='-REPLACE-', size=(20,1)),
+             sg.Button("Replace All", key='-REPLACE_ALL-')]
+        ])],
+        
+        # Channel comparison table
+        [sg.Table(
+            values=[[curr, exp] for curr, exp in zip_longest(current_channels, expected_channels, fillvalue="")],
+            headings=["Current Names", "Expected Names"],
+            auto_size_columns=True,
+            justification='left',
+            num_rows=min(25, max(len(current_channels), len(expected_channels))),
+            key='-CHANNEL_TABLE-',
+            enable_events=True,
+            vertical_scroll_only=False
+        )],
+        
+        # Status of matches
+        [sg.Text("", key='-MATCH_STATUS-', font=('Default', 12))],
+        
+        [sg.Button("Apply to Batch", key='-APPLY-', button_color=('white', '#2196F3')),
+         sg.Button("Cancel", key='-CANCEL-')]
+    ]
+    
+    window = sg.Window("Batch Channel Name Correction", layout, 
+                      modal=True, finalize=True, resizable=True)
+    
+    modified_channels = current_channels.copy()
+    
+    def update_table_and_status():
+        """Update the table and matching status."""
+        window['-CHANNEL_TABLE-'].update(
+            [[curr, exp] for curr, exp in zip_longest(modified_channels, expected_channels, fillvalue="")]
+        )
+        matches = sum(1 for curr, exp in zip_longest(modified_channels, expected_channels, fillvalue=None) 
+                     if curr == exp)
+        status = f"Matching Channels: {matches}/{len(expected_channels)}"
+        if len(modified_channels) != len(expected_channels):
+            status += f"\nWarning: Number of channels doesn't match! Current: {len(modified_channels)}, Expected: {len(expected_channels)}"
+        window['-MATCH_STATUS-'].update(status)
+    
+    update_table_and_status()
+    
+    while True:
+        event, values = window.read()
+        
+        if event in (sg.WIN_CLOSED, '-CANCEL-'):
+            window.close()
+            return None
+            
+        elif event == '-REPLACE_ALL-':
+            find = values['-FIND-']
+            replace = values['-REPLACE-']
+            if find:  # Only replace if find string is not empty
+                modified_channels = [ch.replace(find, replace) for ch in modified_channels]
+                update_table_and_status()
+                
+        elif event == '-APPLY-':
+            if len(modified_channels) != len(expected_channels):
+                if not sg.popup_yes_no("Warning: Number of channels doesn't match the expected montage. Continue anyway?"):
+                    continue
+            window.close()
+            return modified_channels
+    
+    window.close()
 
 def ask_skip_input_file(config):
     '''     Function to ask if user wants to use the current EEG file.     '''
@@ -1120,6 +1290,9 @@ while True:# @noloop remove
                 # Only drop non-EEG channels, not bad channels
                 raw.drop_channels(config['channels_to_be_dropped'])
                 
+                # Possible channel names corrections
+                raw, config = implement_channel_corrections(raw, config)
+                
                 # Temporary raw file to work with during preprocessing
                 raw_temp = raw.copy()
 
@@ -1232,9 +1405,8 @@ while True:# @noloop remove
                     save_epoch_data_to_txt(selected_epochs_sensor, config['file_path_sensor'])
                     
                     if config['apply_output_filtering']:
+                        frequency_band_pairs = get_active_frequency_bands(config)
                         
-                        frequency_band_pairs = list(zip(config['frequency_bands'][::2], config['frequency_bands'][1::2], strict=True))
-
                         for low_band, high_band in frequency_band_pairs:
                             selected_epochs_sensor_filt = apply_epoch_selection(
                                 raw,config,sfreq=config['downsampled_sample_frequency'],

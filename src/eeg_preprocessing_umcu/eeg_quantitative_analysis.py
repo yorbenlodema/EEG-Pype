@@ -17,16 +17,66 @@ from scipy.signal import hilbert
 import networkx as nx
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy import signal
-from scipy.stats import gaussian_kde
 from antropy import sample_entropy
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
+import sys
 
 # Configuration
 FOLDER_EXTENSION = 'bdf'  # Change this to match your folder extension (e.g., 'bdf', 'edf', etc.)
 MAX_MEMORY_PERCENT = 70  # Maximum memory usage percentage
 
+# Be careful, option to change frequency bands (both those recognized in the epoch file names
+# and bands used for power and spectral variability calculations. Don't change the format. You can add additional
+# bands in the same format.
+FREQUENCY_BANDS = {
+    "delta": {
+        "pattern": r"0\.5-4\.0",
+        "range": (0.5, 4.0)
+    },
+    "theta": {
+        "pattern": r"4\.0-8\.0",
+        "range": (4.0, 8.0)
+    },
+    "alpha": {
+        "pattern": r"8\.0-13\.0",
+        "range": (8.0, 13.0)
+    },
+    "beta1": {
+        "pattern": r"13\.0-20\.0",
+        "range": (13.0, 20.0)
+    },
+    "beta2": {
+        "pattern": r"20\.0-30\.0",
+        "range": (20.0, 30.0)
+    },
+    # Keep broadband (with this exact name) since this band is used for power and SV calculations.
+    # It's fine if broadband refers to unfiltered epochs, power and SV calculations create a new PSD.
+    "broadband": {
+        "pattern": r"0\.5-47",
+        "range": (0.5, 47.0)
+    }
+}
+
+def validate_frequency_bands():
+    """Validate FREQUENCY_BANDS configuration"""
+    if not FREQUENCY_BANDS:
+        raise ValueError("FREQUENCY_BANDS dictionary is empty")
+    
+    for band_name, band_info in FREQUENCY_BANDS.items():
+        if 'pattern' not in band_info or 'range' not in band_info:
+            raise ValueError(f"Band {band_name} missing required keys (pattern, range)")
+        
+        fmin, fmax = band_info['range']
+        if not (isinstance(fmin, (int, float)) and isinstance(fmax, (int, float))):
+            raise ValueError(f"Band {band_name} range values must be numeric")
+        if fmin >= fmax:
+            raise ValueError(f"Band {band_name} minimum frequency must be less than maximum")
+        
+        if not isinstance(band_info['pattern'], str):
+            raise ValueError(f"Band {band_name} pattern must be a string")
+
 BATCH_SIZE = 10  # Number of subjects to process in parallel
-DEFAULT_THREADS = max(1, int(cpu_count() * 0.8))  # Use 80% of cores, no max limit
+DEFAULT_THREADS = max(1, int(cpu_count() * 0.7))  # Use 80% of cores, no max limit
 
 class MemoryMonitor:
     @staticmethod
@@ -40,6 +90,46 @@ class MemoryMonitor:
         if MemoryMonitor.get_memory_usage() > MAX_MEMORY_PERCENT:
             return True
         return False
+    
+    @staticmethod
+    def check_concatenation_safety(data_size, num_epochs):
+        """
+        Check if concatenation is likely to exceed memory limits.
+        
+        Parameters:
+        -----------
+        data_size : int
+            Size of one epoch in bytes
+        num_epochs : int
+            Number of epochs to concatenate
+            
+        Returns:
+        --------
+        bool : True if safe to proceed, False if likely to exceed memory
+        """
+        try:
+            # Get system memory info
+            system_memory = psutil.virtual_memory()
+            available_memory = system_memory.available
+            
+            # Calculate estimated memory needed (add 20% buffer)
+            estimated_memory = data_size * num_epochs * 1.2
+            
+            # Check if we'll exceed the threshold
+            memory_threshold = (available_memory * MAX_MEMORY_PERCENT) / 100
+            
+            if estimated_memory > memory_threshold:
+                logging.warning(
+                    f"Concatenation may exceed memory limits. "
+                    f"Estimated need: {estimated_memory/1e9:.2f}GB, "
+                    f"Available: {memory_threshold/1e9:.2f}GB"
+                )
+                return False
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error checking memory for concatenation: {str(e)}")
+            return False
 
 def setup_logging(folder_path):
     """Setup logging for the current analysis run"""
@@ -83,15 +173,29 @@ def create_gui():
                 text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(20, 10))]
     ]
     
+    # Column 1: Input Settings and Matrix Export
     left_column = [
         [sg.Frame('Input Settings', [
             [sg.Text("Select data folder:", font=('Helvetica', 11, 'bold'), background_color=MAIN_BG)],
-            [sg.Input(key="-FOLDER-", size=(30, 1)), sg.FolderBrowse(button_color=BUTTON_COLOR)],
-            [sg.Text("Folder extension:", background_color=MAIN_BG), sg.Input(FOLDER_EXTENSION, key="-EXTENSION-", size=(10, 1))],
+            [sg.Input(key="-FOLDER-", size=(25, 1)), sg.FolderBrowse(button_color=BUTTON_COLOR)],
+            [sg.Text("Folder extension:", background_color=MAIN_BG), sg.Input(FOLDER_EXTENSION, key="-EXTENSION-", size=(8, 1))],
             [sg.Text("Processing threads:", background_color=MAIN_BG), sg.Input(suggested_threads, key="-THREADS-", size=(5, 1))],
             [sg.Checkbox("Epoch files have headers", key="-HAS_HEADERS-", default=True, background_color=MAIN_BG)],
         ], background_color=MAIN_BG)],
-                
+        
+        [sg.Frame('Matrix Export', [
+            [sg.Checkbox("Save connectivity matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG)],
+            [sg.Text("Matrix folder:", background_color=MAIN_BG), 
+             sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(15, 1))],
+            [sg.Checkbox("Save MST matrices", key="-SAVE_MST-", default=False, background_color=MAIN_BG)],
+            [sg.Text("MST folder:", background_color=MAIN_BG), 
+             sg.Input("mst_matrices", key="-MST_FOLDER-", size=(15, 1))],
+            [sg.Checkbox("Save channel-level averages", key="-SAVE_CHANNEL_AVERAGES-", default=False, background_color=MAIN_BG)],
+        ], background_color=MAIN_BG)],
+    ]
+    
+    # Column 2: Complexity Measures
+    middle_column = [
         [sg.Frame('Complexity Measures', [
             [sg.Checkbox("Calculate JPE/PE", key="-CALC_JPE-", default=False, background_color=MAIN_BG)],
             [sg.Text("Time step (tau):", background_color=MAIN_BG), sg.Input("1", key="-JPE_ST-", size=(5, 1))],
@@ -103,24 +207,22 @@ def create_gui():
             [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("1", key="-APEN_M-", size=(3, 1))],
             [sg.Text("Tolerance (r):", background_color=MAIN_BG), sg.Input("0.25", key="-APEN_R-", size=(3, 1))],
         ], background_color=MAIN_BG)],
-                        
-        [sg.Frame('Matrix Export', [
-            [sg.Checkbox("Save connectivity matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG)],
-            [sg.Text("Matrix folder name:", background_color=MAIN_BG), 
-             sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(20, 1))],
-            [sg.Checkbox("Save MST matrices", key="-SAVE_MST-", default=False, background_color=MAIN_BG)],
-            [sg.Text("MST folder name:", background_color=MAIN_BG), 
-             sg.Input("mst_matrices", key="-MST_FOLDER-", size=(20, 1))],
-            [sg.Checkbox("Save channel-level averages", key="-SAVE_CHANNEL_AVERAGES-", default=False, background_color=MAIN_BG)],
-        ], background_color=MAIN_BG)],
     ]
     
+    # Column 3: Spectral Analysis and Connectivity
     right_column = [
         [sg.Frame('Spectral Analysis', [
             [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
+            [sg.Text("PSD Method:", background_color=MAIN_BG),
+             sg.Combo(['Multitaper', 'Welch', 'FFT'], default_value='Multitaper', key="-PSD_METHOD-", size=(10, 1), enable_events=True)],
+            # Welch parameters (initially hidden)
+            [sg.pin(sg.Column([
+                [sg.Text("Welch window (ms):", background_color=MAIN_BG), sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1))],
+                [sg.Text("Welch overlap (%):", background_color=MAIN_BG), sg.Input("50", key="-WELCH_OVERLAP-", size=(6, 1))]
+            ], key='-WELCH_PARAMS-', visible=False, background_color=MAIN_BG))],
             [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG)],
-            [sg.Text("Freq range (Hz):", background_color=MAIN_BG), 
+            [sg.Text("Freq range:", background_color=MAIN_BG), 
              sg.Input("4", key="-PEAK_MIN-", size=(4, 1)), 
              sg.Text("-", background_color=MAIN_BG),
              sg.Input("13", key="-PEAK_MAX-", size=(4, 1))],
@@ -133,7 +235,7 @@ def create_gui():
             [sg.Checkbox("Calculate PLI MST measures", key="-CALC_PLI_MST-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate AEC", key="-CALC_AEC-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Use orthogonalization (AECc)", key="-USE_AECC-", default=False, background_color=MAIN_BG)],
-            [sg.Checkbox("Concatenate epochs for AEC(c)", key="-CONCAT_AECC-", default=True, background_color=MAIN_BG)],
+            [sg.Checkbox("Concatenate epochs for AEC(c)", key="-CONCAT_AECC-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate AEC(c) MST measures", key="-CALC_AEC_MST-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("AEC make negative corr. zero", key="-AEC_FORCE_POSITIVE-", default=True, background_color=MAIN_BG)],
         ], background_color=MAIN_BG)]
@@ -141,7 +243,7 @@ def create_gui():
     
     progress_section = [
         [sg.Frame('Progress', [
-            [sg.Multiline(size=(70, 8), key='-LOG-', autoscroll=True, reroute_stdout=True,
+            [sg.Multiline(size=(70, 6), key='-LOG-', autoscroll=True, reroute_stdout=True,
                          disabled=True, background_color='#FFFFFF', text_color='#000000')],
             [sg.ProgressBar(100, orientation='h', size=(60, 20), key='-PROGRESS-',
                           bar_color=(HEADER_BG, MAIN_BG))],
@@ -156,8 +258,9 @@ def create_gui():
     layout = [
         [sg.Column(header, background_color=HEADER_BG, expand_x=True)],
         [sg.Column([
-            [sg.Column(left_column, background_color=MAIN_BG, pad=(10, 5)),
-             sg.Column(right_column, background_color=MAIN_BG, pad=(10, 5))],
+            [sg.Column(left_column, background_color=MAIN_BG, pad=(5, 5)),
+             sg.Column(middle_column, background_color=MAIN_BG, pad=(5, 5)),
+             sg.Column(right_column, background_color=MAIN_BG, pad=(5, 5))],
             [sg.Column(progress_section, background_color=MAIN_BG, pad=(0, 5))]
         ], background_color=MAIN_BG, pad=(20, 20))]
     ]
@@ -191,20 +294,47 @@ def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_n
     return folders
 
 def extract_freq_band(condition):
-    """Extract frequency band from condition string"""
-    freq_patterns = {
-        r'0.5-4.0': 'delta',
-        r'4.0-8.0': 'theta',
-        r'8.0-13.0': 'alpha',
-        r'13.0-20.0': 'beta1',
-        r'20.0-30.0': 'beta2',
-        r'0.5-47': 'broadband'
-    }
-    
-    for pattern, band_name in freq_patterns.items():
-        if re.search(pattern, condition):
+    """
+    Parse the filename or condition string to identify which
+    frequency band it belongs to, based on the FREQUENCY_BANDS config.
+
+    Parameters
+    ----------
+    condition : str
+        The substring from the epoch filename (e.g., "8.0-13.0 Hz")
+        or condition text that includes the frequency band.
+
+    Returns
+    -------
+    str
+        The band name (e.g., "alpha", "theta", "delta", etc.)
+        or "unknown" if no match is found.
+    """
+    for band_name, band_info in FREQUENCY_BANDS.items():
+        pattern = band_info['pattern']
+        # Add Hz to pattern if not already included
+        if not pattern.endswith('Hz'):
+            search_pattern = f"{pattern}(\s*Hz)?"
+        else:
+            search_pattern = pattern
+        if re.search(search_pattern, condition, re.IGNORECASE):
             return band_name
     return 'unknown'
+
+def is_broadband_condition(condition):
+    """
+    Check if condition matches broadband pattern from FREQUENCY_BANDS config.
+        
+    Returns
+    -------
+    bool
+        True if condition matches broadband pattern, False otherwise
+    """
+    if 'broadband' not in FREQUENCY_BANDS:
+        return False
+    pattern = FREQUENCY_BANDS['broadband']['pattern']
+    return bool(re.search(pattern, condition, re.IGNORECASE))
+
 
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
     """Save connectivity matrix to CSV with proper channel names"""
@@ -231,7 +361,7 @@ def calculate_PSD(data: np.ndarray,
                  compute_spectrogram: bool = False,
                  **kwargs) -> Dict[str, np.ndarray]:
     """
-    Calculate Power Spectral Density (PSD) and optionally spectrogram using specified method.
+    Calculate Power Spectral Density (PSD) using specified method.
     
     Parameters
     ----------
@@ -247,12 +377,12 @@ def calculate_PSD(data: np.ndarray,
         Whether to compute and return spectrogram
     **kwargs : dict
         Method-specific parameters:
+            Welch:
+                window_length_ms : float (window length in milliseconds)
+                overlap_percent : float (0 to 100)
             Multitaper:
                 time_bandwidth : float (default 4)
                 n_tapers : int (optional, computed from time_bandwidth)
-            Spectrogram:
-                window_length : int (in ms)
-                overlap : float (0 to 1)
     
     Returns
     -------
@@ -264,8 +394,6 @@ def calculate_PSD(data: np.ndarray,
                 Power spectral density (frequencies x channels)
             'spectrogram' : np.ndarray, optional
                 Time-frequency representation (only if compute_spectrogram=True)
-            'times' : np.ndarray, optional
-                Time points for spectrogram (only if compute_spectrogram=True)
     """
     if method not in ['multitaper', 'welch', 'fft']:
         raise ValueError(f"Unknown method: {method}")
@@ -277,7 +405,7 @@ def calculate_PSD(data: np.ndarray,
         raise ValueError("Data must be 2D array (samples x channels)")
     if fs <= 0:
         raise ValueError("Sampling frequency must be positive")
-        
+    
     # Initialize return dictionary
     result = {}
     
@@ -293,12 +421,32 @@ def calculate_PSD(data: np.ndarray,
             raise
             
     elif method == 'welch':
-        # Placeholder for future Welch implementation
-        raise NotImplementedError("Welch's method not yet implemented")
-        
+        try:
+            window_length_ms = kwargs.get('window_length_ms', 1000)  # Default 1000ms
+            overlap_percent = kwargs.get('overlap_percent', 50)  # Default 50%
+            
+            frequencies, psd = _calculate_welch_psd(
+                data, 
+                fs, 
+                window_length_ms=window_length_ms,
+                overlap_percent=overlap_percent
+            )
+            result['frequencies'] = frequencies
+            result['psd'] = psd
+            
+        except Exception as e:
+            logging.error(f"Error calculating Welch PSD: {str(e)}")
+            raise
+            
     elif method == 'fft':
-        # Placeholder for future FFT implementation
-        raise NotImplementedError("FFT method not yet implemented")
+        try:
+            frequencies, psd = _calculate_fft_psd(data, fs)
+            result['frequencies'] = frequencies
+            result['psd'] = psd
+            
+        except Exception as e:
+            logging.error(f"Error calculating FFT PSD: {str(e)}")
+            raise
     
     # Apply frequency range if specified
     if freq_range is not None:
@@ -309,8 +457,90 @@ def calculate_PSD(data: np.ndarray,
         freq_mask = (result['frequencies'] >= fmin) & (result['frequencies'] <= fmax)
         result['frequencies'] = result['frequencies'][freq_mask]
         result['psd'] = result['psd'][freq_mask]
-        
+    
     return result
+
+def _calculate_welch_psd(data: np.ndarray, 
+                        fs: float, 
+                        window_length_ms: float = 1000,
+                        overlap_percent: float = 50) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Calculate PSD using Welch's method.
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        Time series data (samples x channels)
+    fs : float
+        Sampling frequency in Hz
+    window_length_ms : float
+        Length of each segment in milliseconds
+    overlap_percent : float
+        Overlap between segments in percentage (0-100)
+        
+    Returns
+    -------
+    frequencies : np.ndarray
+        Frequency values
+    psd : np.ndarray
+        Power spectral density (frequencies x channels)
+    """
+    # Convert window length from ms to samples
+    nperseg = int((window_length_ms / 1000) * fs)
+    
+    # Convert overlap from percentage to samples
+    noverlap = int(nperseg * (overlap_percent / 100))
+    
+    # Initialize array for PSD results
+    n_channels = data.shape[1]
+    
+    # Calculate PSD for first channel to get frequency axis
+    frequencies, temp_psd = signal.welch(data[:, 0], 
+                                       fs=fs,
+                                       nperseg=nperseg,
+                                       noverlap=noverlap,
+                                       detrend='constant',
+                                       scaling='density')
+    
+    # Initialize PSD array with correct dimensions
+    psd = np.zeros((len(frequencies), n_channels))
+    psd[:, 0] = temp_psd
+    
+    # Calculate for remaining channels
+    for ch in range(1, n_channels):
+        _, psd[:, ch] = signal.welch(data[:, ch],
+                                   fs=fs,
+                                   nperseg=nperseg,
+                                   noverlap=noverlap,
+                                   detrend='constant',
+                                   scaling='density')
+    
+    return frequencies, psd
+
+def _calculate_fft_psd(data: np.ndarray, fs: float) -> Tuple[np.ndarray, np.ndarray]:
+    n_samples = data.shape[0]
+    n_channels = data.shape[1]
+    
+    # Calculate frequency axis
+    frequencies = np.fft.rfftfreq(n_samples, d=1/fs)
+    
+    # Initialize PSD array
+    psd = np.zeros((len(frequencies), n_channels))
+    
+    # Calculate PSD for each channel
+    for ch in range(n_channels):
+        # Apply Hanning window from scipy.signal.windows
+        windowed_data = data[:, ch] * signal.windows.hann(n_samples)
+        
+        # Calculate FFT
+        fft_data = np.fft.rfft(windowed_data)
+        
+        # Calculate power spectral density
+        window_correction = np.mean(signal.windows.hann(n_samples)**2)
+        psd[:, ch] = (np.abs(fft_data)**2) / (fs * n_samples * window_correction)
+    
+    return frequencies, psd
+
 
 def _calculate_multitaper_psd(data: np.ndarray, fs: float):
     """Calculate PSD using MNE's multitaper implementation."""
@@ -323,10 +553,8 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float):
         verbose=False,
     )
     
-    print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")
-    
-    print(psds.shape)
-    
+    #print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")
+
     return freqs, psds.T
 
 def calculate_sampen_for_channels(data, m=2):
@@ -440,89 +668,96 @@ def _phi_vectorized(x, m, r):
 
 def calculate_spectral_variability(data_values, fs, window_length=2000):
     """
-    Calculate spectral variability per channel from broadband data.
-    For each frequency band, calculates how much its relative power varies over time.
+    Calculate spectral variability per channel from concatenated
+    broadband data. Uses FREQUENCY_BANDS for band definitions.
     
-    Parameters:
-    -----------
-    data_values : numpy array (time points × channels)
-        Broadband EEG data
-    fs : float
-        Sampling frequency in Hz
-    window_length : int
-        Length of window in milliseconds
-        
-    Returns:
-    --------
-    dict : Dictionary with CV values for each band, or None if calculation fails
+    - Expects pre-concatenated data with channel means already removed.
+    - The "broadband" band is assumed to define total power reference.
     """
     try:
-        if data_values.shape[0] < window_length:
-            logging.warning(f"Data length ({data_values.shape[0]}) shorter than window length ({window_length})")
-            return None
-        
         num_samples, num_channels = data_values.shape
-        
         samples_per_window = int(window_length * fs / 1000)
-        
-        # Define frequency bands
-        bands = {
-            'delta': (0.5, 4),
-            'theta': (4, 8),
-            'alpha': (8, 13),
-            'beta1': (13, 20),
-            'beta2': (20, 30),
-        }
-        
-        # Initialize results
-        cv_values = {band: np.zeros(num_channels) for band in bands}
-        
+
+        # Require at least 3 windows for a meaningful coefficient of variation
+        if num_samples < 3 * samples_per_window:
+            logging.warning(
+                f"Data length ({num_samples}) too short for meaningful "
+                f"variability calculation with window length {samples_per_window} samples."
+            )
+            return None
+
+        # 1) Identify the broadband range for total power
+        if "broadband" not in FREQUENCY_BANDS:
+            logging.error("Broadband frequency range not defined in FREQUENCY_BANDS")
+            return None
+        broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
+
+        # Prepare output dict of CV values
+        cv_values = {}
+        for band_name in FREQUENCY_BANDS:
+            if band_name.lower() == "broadband":
+                continue
+            cv_values[band_name] = np.zeros(num_channels)
+
+        # 2) Loop over channels and calculate spectrogram
         for channel in range(num_channels):
             try:
-                # Calculate spectrogram
-                f, t, Sxx = signal.spectrogram(data_values[:, channel], fs, nperseg=samples_per_window, 
-                                              noverlap=samples_per_window//2)
-                
-                # Check if we have enough frequency resolution
-                if f[1] - f[0] > 0.5:  # First band starts at 0.5 Hz
-                    logging.warning(f"Frequency resolution too low: {f[1] - f[0]:.2f} Hz. Consider increasing window length.")
-                
-                # Calculate total power across all frequencies up to 47 Hz
-                total_mask = (f >= 0.5) & (f <= 47)
+                # Compute spectrogram for this channel
+                f, t, Sxx = signal.spectrogram(
+                    data_values[:, channel],
+                    fs=fs,
+                    nperseg=samples_per_window,
+                    noverlap=samples_per_window // 2,
+                    detrend='constant',
+                    window='hann'
+                )
+
+                # Create mask for broadband total power
+                total_mask = (f >= broadband_min) & (f <= broadband_max)
                 if not np.any(total_mask):
-                    logging.error("No frequencies found in broadband range (0.5-47 Hz)")
-                    return None
-                
-                # Calculate relative power for each band over time
-                for band_name, (low_freq, high_freq) in bands.items():
+                    logging.error("No frequencies found in the broadband range.")
+                    for band_name in cv_values:
+                        cv_values[band_name][channel] = np.nan
+                    continue
+
+                total_power = np.sum(Sxx[total_mask, :], axis=0)  # shape: (time_windows,)
+
+                # 3) Loop over the user-defined frequency bands
+                for band_name, band_info in FREQUENCY_BANDS.items():
+                    if band_name.lower() == "broadband":
+                        continue  # skip calculating a separate "broadband" measure
+
+                    low_freq, high_freq = band_info["range"]
                     band_mask = (f >= low_freq) & (f < high_freq)
                     if not np.any(band_mask):
-                        logging.warning(f"No frequencies found in {band_name} band ({low_freq}-{high_freq} Hz)")
+                        # If no frequencies found in this range, skip
                         cv_values[band_name][channel] = np.nan
                         continue
-                        
-                    # Calculate band power over time
-                    band_power = np.sum(Sxx[band_mask, :], axis=0)
-                    total_power = np.sum(Sxx[total_mask, :], axis=0)
-                    
-                    # Avoid division by zero
+
+                    band_power = np.sum(Sxx[band_mask, :], axis=0)  # shape: (time_windows,)
+
+                    # Compute relative power time series
                     with np.errstate(divide='ignore', invalid='ignore'):
-                        relative_power = np.where(total_power > 0, band_power / total_power, 0)
-                    
-                    # Calculate coefficient of variation
-                    if np.all(relative_power == 0):
-                        cv_values[band_name][channel] = np.nan
+                        relative_power = np.where(
+                            total_power > 0, band_power / total_power, 0
+                        )
+
+                    # Remove NaN / Inf
+                    valid_power = relative_power[np.isfinite(relative_power)]
+                    if len(valid_power) > 0:
+                        # Coefficient of Variation: std / mean
+                        cv_values[band_name][channel] = np.std(valid_power) / np.mean(valid_power)
                     else:
-                        cv = np.std(relative_power) / np.mean(relative_power)
-                        cv_values[band_name][channel] = cv
-                        
-            except Exception as e:
-                logging.error(f"Error processing channel {channel}: {str(e)}")
-                for band in bands:
-                    cv_values[band][channel] = np.nan
-                
+                        cv_values[band_name][channel] = np.nan
+
+            except Exception as ch_err:
+                logging.error(f"Error processing channel {channel}: {str(ch_err)}")
+                # Fill with NaN for all bands on this channel
+                for band_name in cv_values:
+                    cv_values[band_name][channel] = np.nan
+
         return cv_values
-        
+
     except Exception as e:
         logging.error(f"Error in spectral variability calculation: {str(e)}")
         return None
@@ -609,52 +844,62 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
 
 def calculate_power_bands(frequencies, psd):
     """
-    Calculate absolute and relative power using pre-computed PSD.
-    
-    Parameters:
-    frequencies : numpy array
-        Frequency values
-    psd : numpy array
-        Power spectral density (frequencies × channels)
-    
-    Returns:
-    tuple: (dict of average powers, dict of channel-level powers)
+    Calculate absolute and relative power using pre-computed PSD
+    for all defined frequency bands in FREQUENCY_BANDS, assuming
+    'broadband' is always available in the dictionary for total power.
+
+    Parameters
+    ----------
+    frequencies : np.ndarray
+        1D array of frequency values.
+    psd : np.ndarray
+        2D array of power spectral density (frequencies x channels).
+
+    Returns
+    -------
+    tuple
+        (powers, channel_powers)
+
+        - powers: dict with mean abs/rel power across channels per band
+        - channel_powers: dict with channel-level arrays (one entry per band)
     """
-    # Define frequency bands
-    bands = {
-        'delta': (0.5, 4),
-        'theta': (4, 8),
-        'alpha': (8, 13),
-        'beta1': (13, 20),
-        'beta2': (20, 30)
-    }
     
-    # Initialize results dictionaries
-    powers = {}  # For whole-brain averages
-    channel_powers = {}  # For channel-level results
+    broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
+    broadband_mask = (frequencies >= broadband_min) & (frequencies <= broadband_max)
     
-    # Calculate total power in 0.5-47 Hz range
-    total_mask = (frequencies >= 0.5) & (frequencies <= 47)
-    total_power = np.sum(psd[total_mask, :], axis=0)
-    
-    # Calculate power in each band
-    for band_name, (fmin, fmax) in bands.items():
-        mask = (frequencies >= fmin) & (frequencies <= fmax)
-        
-        # Calculate absolute power
-        abs_power = np.sum(psd[mask, :], axis=0)  # Per channel
-        powers[f'{band_name}_abs_power'] = np.mean(abs_power)  # Mean across channels
-        
-        # Calculate relative power
-        rel_power = abs_power / total_power  # Per channel
-        powers[f'{band_name}_rel_power'] = np.mean(rel_power)  # Mean across channels
-        
-        # Store channel-level results
-        channel_powers[f'{band_name}_abs_power'] = abs_power
-        channel_powers[f'{band_name}_rel_power'] = rel_power
-    
+    # Compute total power in the broadband range
+    total_power = np.sum(psd[broadband_mask, :], axis=0)  # shape: (n_channels,)
+
+    # Prepare output containers
+    powers = {}
+    channel_powers = {}
+
+    # Loop over the frequency bands
+    for band_name, band_info in FREQUENCY_BANDS.items():
+        # Optionally skip storing separate 'broadband' results if desired
+        if band_name.lower() == "broadband":
+            continue  # or remove this if you want to save broadband power as well
+
+        fmin, fmax = band_info["range"]
+        band_mask = (frequencies >= fmin) & (frequencies <= fmax)
+
+        # Compute absolute power in this band (sum over the freq axis)
+        abs_power = np.sum(psd[band_mask, :], axis=0)
+
+        # Compute relative power by dividing by the broadband total
+        with np.errstate(divide='ignore', invalid='ignore'):
+            rel_power = abs_power / total_power
+
+        # Store mean abs/rel power across channels
+        powers[f"{band_name}_abs_power"] = np.nanmean(abs_power)
+        powers[f"{band_name}_rel_power"] = np.nanmean(rel_power)
+
+        # Also store channel-level arrays
+        channel_powers[f"{band_name}_abs_power"] = np.nan_to_num(abs_power, nan=np.nan)
+        channel_powers[f"{band_name}_rel_power"] = np.nan_to_num(rel_power, nan=np.nan)
+
     return powers, channel_powers
-        
+
 def calculate_mst_measures(connectivity_matrix, used_channels=None):
     """
     Calculate MST measures from a connectivity matrix with additional error handling for disconnected graphs.
@@ -1019,10 +1264,10 @@ def process_subject_condition(args):
     subject, condition, epoch_files, convert_ints_pe, invert, calc_jpe, calc_pli, calc_pli_mst, \
     calc_aec, use_aecc, force_positive, jpe_st, calc_aec_mst, calc_power, power_fs, calc_peak, \
     peak_min, peak_max, calc_sampen, sampen_m, calc_apen, apen_m, apen_r, calc_sv, sv_window, \
-    save_matrices, save_mst, save_channel_averages, concat_aecc, has_headers = args
+    save_matrices, save_mst, save_channel_averages, concat_aecc, has_headers, \
+    psd_method, welch_window_ms, welch_overlap = args
     
     try:
-        # Initialize storage for channel-level and whole-brain results
         channel_results = defaultdict(lambda: defaultdict(list))
         jpe_values = []
         pe_values = []
@@ -1033,7 +1278,7 @@ def process_subject_condition(args):
         power_values = defaultdict(list)
         apen_values = []
         sampen_values = []
-        sv_values = defaultdict(list)
+        sv_values = {}
         channel_names = None
         
         # Initialize counter for successful MST calculations
@@ -1098,35 +1343,58 @@ def process_subject_condition(args):
                 del data
                 
                 # Determine if any spectral calculations are needed
-                need_spectral = (calc_power or calc_peak or calc_sv) and '0.5-47' in condition
+                need_spectral = (calc_power or calc_peak or calc_sv) and is_broadband_condition(condition)
                 
                 if need_spectral:
                     try:
+                        # Prepare PSD calculation parameters
+                        psd_kwargs = {}
+                        if psd_method == 'welch':
+                            psd_kwargs.update({
+                                'window_length_ms': welch_window_ms,
+                                'overlap_percent': welch_overlap
+                            })
+                        
                         # Calculate PSDs with appropriate settings
                         spectral_data = calculate_PSD(
                             data=data_values,
                             fs=power_fs,
-                            method='multitaper',
+                            method=psd_method,
                             compute_spectrogram=calc_sv,
                             window_length=sv_window if calc_sv else None,
-                            overlap=0.5 if calc_sv else None
+                            overlap=0.5 if calc_sv else None,
+                            **psd_kwargs
                         )
                         
                         # Calculate power bands if requested
+                        # if calc_power:
+                        #     try:
+                        #         powers, channel_powers = calculate_power_bands(
+                        #             frequencies=spectral_data['frequencies'],
+                        #             psd=spectral_data['psd']
+                        #         )
+                                
+                        #         # Store whole-brain averages (just once)
+                        #         for measure, value in powers.items():
+                        #             power_values[measure].append(value)
+                                    
+                                    
                         if calc_power:
                             try:
+                                logging.info(f"Starting power calculation for {subject} - {condition}, epoch {i+1}")
                                 powers, channel_powers = calculate_power_bands(
                                     frequencies=spectral_data['frequencies'],
                                     psd=spectral_data['psd']
                                 )
                                 
-                                # Store whole-brain averages (just once)
+                                # Store whole-brain averages
                                 for measure, value in powers.items():
                                     power_values[measure].append(value)
+                                    logging.info(f"Power measure {measure}: {value}")
                                 
                                 # Store channel-level results if requested
                                 if save_channel_averages:
-                                    for band_name in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
+                                    for band_name in FREQUENCY_BANDS:
                                         for ch in range(len(channel_names)):
                                             channel_results[channel_names[ch]][f'{band_name}_abs_power'].append(
                                                 channel_powers[f'{band_name}_abs_power'][ch]
@@ -1137,9 +1405,9 @@ def process_subject_condition(args):
                                             
                             except Exception as e:
                                 logging.error(f"Error calculating power measures for epoch {i+1}: {str(e)}")
-                                for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                                    power_values[f'{band}_abs_power'].append(np.nan)
-                                    power_values[f'{band}_rel_power'].append(np.nan)
+                                for band_name in FREQUENCY_BANDS:
+                                    power_values[f'{band_name}_abs_power'].append(np.nan)
+                                    power_values[f'{band_name}_rel_power'].append(np.nan)
                         
                         # Calculate peak frequency if requested
                         if calc_peak:
@@ -1166,29 +1434,90 @@ def process_subject_condition(args):
                         # Calculate spectral variability if requested
                         if calc_sv:
                             try:
-                                sv_results = calculate_spectral_variability(
-                                    data_values=data_values,
-                                    fs=power_fs,
-                                    window_length=sv_window
-                                )
+                                # First load one epoch to check memory requirements
+                                if epoch_files:
+                                    try:
+                                        test_data = pd.read_csv(epoch_files[0], sep=None, engine='python', 
+                                                              header=0 if has_headers else None).values
+                                        if not MemoryMonitor.check_concatenation_safety(test_data.nbytes, len(epoch_files)):
+                                            raise MemoryError("Insufficient memory for safe concatenation of SV epochs")
+                                        del test_data
+                                    except Exception as e:
+                                        logging.error(f"Error checking memory requirements for SV: {str(e)}")
+                                        raise
+                        
+                                # Initialize list to store all epochs
+                                all_data_sv = []
+                                logging.info(f"Processing concatenated spectral variability for {subject} - {condition}")
+        
+                                # Read and store all epochs with offset correction
+                                for file_path in epoch_files:
+                                    try:
+                                        if has_headers:
+                                            data = pd.read_csv(file_path, sep=None, engine='python')
+                                        else:
+                                            data = pd.read_csv(file_path, sep=None, engine='python', header=None)
+                                        
+                                        epoch_data = data.values
+                                        # Apply offset correction for each channel
+                                        epoch_data = epoch_data - np.mean(epoch_data, axis=0)
+                                        all_data_sv.append(epoch_data)
+                                        del data, epoch_data
+                                    except Exception as e:
+                                        logging.error(f"Error processing file {os.path.basename(file_path)} for SV: {str(e)}")
+                                        continue
                                 
-                                if sv_results:
-                                    if save_channel_averages:
-                                        for band_name, values in sv_results.items():
-                                            band_key = f'sv_{band_name}'
-                                            for ch in range(len(channel_names)):
-                                                channel_results[channel_names[ch]][band_key].append(values[ch])
-                                    
-                                    for band_name, values in sv_results.items():
-                                        band_key = f'sv_{band_name}'
-                                        if band_key not in sv_values:
-                                            sv_values[band_key] = []
-                                        sv_values[band_key].append(np.nanmean(values))
+                                if all_data_sv:
+                                    try:
+                                        # Concatenate along time axis
+                                        concatenated_data = np.concatenate(all_data_sv, axis=0)
+                                        # Clear the original list immediately
+                                        all_data_sv = None
+                                        
+                                        if MemoryMonitor.check_memory():
+                                            logging.warning("High memory usage detected after concatenation")
+                                            time.sleep(1)
+                                        
+                                        # Calculate SV on concatenated data
+                                        sv_results = calculate_spectral_variability(
+                                            data_values=concatenated_data,
+                                            fs=power_fs,
+                                            window_length=sv_window
+                                        )
+                                        
+                                        # Clear concatenated data immediately after use
+                                        del concatenated_data
+                                        
+                                        if sv_results:
+                                            if save_channel_averages:
+                                                for band_name, values in sv_results.items():
+                                                    band_key = f'sv_{band_name}'
+                                                    for ch in range(len(channel_names)):
+                                                        channel_results[channel_names[ch]][band_key] = values[ch]
+                                            
+                                            # Store single values for each band
+                                            for band_name, values in sv_results.items():
+                                                band_key = f'sv_{band_name}'
+                                                sv_values[band_key] = np.nanmean(values)
+                                        
+                                    except Exception as e:
+                                        logging.error(f"Error calculating spectral variability on concatenated data: {str(e)}")
+                                        for band_name in FREQUENCY_BANDS:
+                                            sv_values[f'sv_{band_name}'] = np.nan
+                                else:
+                                    logging.error("No valid epochs could be processed for spectral variability")
+                                    for band_name in FREQUENCY_BANDS:
+                                        sv_values[f'sv_{band_name}'] = np.nan
                                         
                             except Exception as e:
-                                logging.error(f"Error calculating spectral variability: {str(e)}")
-                                for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                                    sv_values[f'sv_{band}'].append(np.nan)
+                                logging.error(f"Error in spectral variability processing: {str(e)}")
+                                for band_name in FREQUENCY_BANDS:
+                                    sv_values[f'sv_{band_name}'] = np.nan
+                            
+                            finally:
+                                # Clean up interim data
+                                if 'all_data_sv' in locals():
+                                    del all_data_sv
                         
                         # Clean up spectral data
                         del spectral_data
@@ -1197,15 +1526,15 @@ def process_subject_condition(args):
                         logging.error(f"Error in spectral calculations: {str(e)}")
                         # Set all spectral measures to NaN
                         if calc_power:
-                            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                                power_values[f'{band}_abs_power'].append(np.nan)
-                                power_values[f'{band}_rel_power'].append(np.nan)
+                            for band_name in FREQUENCY_BANDS:
+                                power_values[f'{band_name}_abs_power'].append(np.nan)
+                                power_values[f'{band_name}_rel_power'].append(np.nan)
                         if calc_peak:
                             power_values['peak_frequency'].append(np.nan)
                             power_values['channels_without_peak'].append(np.nan)
                         if calc_sv:
-                            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                                sv_values[f'sv_{band}'].append(np.nan)
+                            for band_name in FREQUENCY_BANDS:
+                                sv_values[f'sv_{band_name}'] = np.nan
                 
                 # Calculate JPE and PE
                 if calc_jpe:
@@ -1500,19 +1829,20 @@ def process_subject_condition(args):
                     results[f'pli_mst_{measure}_valid_epochs'] = 0
         
         if calc_power and power_values:
-            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                results[f'{band}_abs_power'] = np.mean(power_values[f'{band}_abs_power'])
-                results[f'{band}_rel_power'] = np.mean(power_values[f'{band}_rel_power'])
+            for band_name in FREQUENCY_BANDS:
+                results[f'{band_name}_abs_power'] = np.mean(power_values[f'{band_name}_abs_power'])
+                results[f'{band_name}_rel_power'] = np.mean(power_values[f'{band_name}_rel_power'])
         
         if calc_peak:
             results['peak_frequency'] = np.mean(power_values['peak_frequency'])
             results['channels_without_peak'] = np.mean(power_values['channels_without_peak'])
-            
-        if calc_sv and sv_values:
-            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                band_key = f'sv_{band}'
-                results[band_key] = np.mean(sv_values[band_key]) if band_key in sv_values and sv_values[band_key] else np.nan
-                
+                    
+        if calc_sv:
+            for band_name in FREQUENCY_BANDS:
+                band_key = f'sv_{band_name}'
+                # No averaging needed since we now have single values
+                results[band_key] = sv_values.get(band_key, np.nan)
+                        
         return subject, condition, results
             
     except Exception as e:
@@ -1550,17 +1880,17 @@ def process_subject_condition(args):
                 error_result[f'pli_mst_{measure}_valid_epochs'] = 0
 
         if calc_power:
-            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                error_result[f'{band}_abs_power'] = np.nan
-                error_result[f'{band}_rel_power'] = np.nan
+            for band_name in FREQUENCY_BANDS:
+                error_result[f'{band_name}_abs_power'] = np.nan
+                error_result[f'{band_name}_rel_power'] = np.nan
         if calc_peak:
             error_result['peak_frequency'] = np.nan
             error_result['channels_without_peak'] = np.nan
         
         # Add spectral variability measures to error result if needed
         if calc_sv:
-            for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                error_result[f'sv_{band}'] = np.nan
+            for band_name in FREQUENCY_BANDS:
+                error_result[f'sv_{band_name}'] = np.nan
         
         return subject, condition, error_result
 
@@ -1598,7 +1928,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
         return grouped_files
     
     if not subdirs:
-        sg.popup_warning(f"No folders ending with '{folder_ext}' found in the selected directory.")
+        sg.popup_error(f"No folders ending with '{folder_ext}' found in the selected directory.")
         return grouped_files
     
     for subdir in subdirs:
@@ -1630,7 +1960,35 @@ def group_epochs_by_condition(folder_path, folder_ext):
         print(f"\nSubject: {base_name}")
         for condition, files in conditions.items():
             print(f"  {condition}: {len(files)} epochs")
+            
+    found_bands = set()
+    unknown_conditions = set()
+    has_broadband = False
     
+    for conditions in grouped_files.values():
+        for condition in conditions.keys():
+            band = extract_freq_band(condition)
+            if band != "unknown":
+                found_bands.add(band)
+                if band == "broadband":
+                    has_broadband = True
+            else:
+                unknown_conditions.add(condition)
+    
+    logging.info("Found the following frequency bands in the data:")
+    for band in sorted(found_bands):
+        logging.info(f"  - {band} ({FREQUENCY_BANDS[band]['pattern']})")
+    
+    if has_broadband:
+        logging.info("Broadband epochs are present - spectral calculations will be performed on these epochs")
+    else:
+        logging.warning("No broadband epochs found - spectral calculations will be skipped")
+    
+    if unknown_conditions:
+        logging.warning("Found conditions with unrecognized frequency bands:")
+        for cond in sorted(unknown_conditions):
+            logging.warning(f"  - {cond}")
+        
     return grouped_files
             
 def process_all_subjects(grouped_files, convert_ints_pe, invert, n_threads, 
@@ -1642,18 +2000,22 @@ def process_all_subjects(grouped_files, convert_ints_pe, invert, n_threads,
                         calc_sv=False, sv_window=1000, 
                         save_matrices=False, save_mst=False, save_channel_averages=False,
                         concat_aecc=False, has_headers=True,
+                        psd_method='multitaper',
+                        welch_window_ms=1000,
+                        welch_overlap=50,
                         progress_callback=None):
     
     process_args = []
     for subject, conditions in grouped_files.items():
         for condition, epoch_files in conditions.items():                        
             process_args.append((subject, condition, epoch_files, 
-                                convert_ints_pe, invert, calc_jpe, calc_pli, calc_pli_mst,
-                                calc_aec, use_aecc, force_positive, jpe_st, calc_aec_mst, 
-                                calc_power, power_fs, calc_peak, peak_min, peak_max,
-                                calc_sampen, sampen_m, calc_apen, apen_m, apen_r,
-                                calc_sv, sv_window, save_matrices, save_mst, 
-                                save_channel_averages, concat_aecc, has_headers))
+                               convert_ints_pe, invert, calc_jpe, calc_pli, calc_pli_mst,
+                               calc_aec, use_aecc, force_positive, jpe_st, calc_aec_mst, 
+                               calc_power, power_fs, calc_peak, peak_min, peak_max,
+                               calc_sampen, sampen_m, calc_apen, apen_m, apen_r,
+                               calc_sv, sv_window, save_matrices, save_mst, 
+                               save_channel_averages, concat_aecc, has_headers,
+                               psd_method, welch_window_ms, welch_overlap))
 
     total_tasks = len(process_args)
     logging.info(f"Starting processing of {total_tasks} subject-condition combinations")
@@ -1727,161 +2089,193 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                          calc_pli=True, calc_aec=False, use_aecc=False, force_positive=True, 
                          calc_aec_mst=False, calc_power=False, power_fs=256, calc_peak=False,
                          peak_min=None, peak_max=None, calc_sampen=False, calc_apen=False, calc_sv=False, 
-                         save_channel_averages=False, concat_aecc=False, has_headers=True, sv_window=None):
-    """Save results to Excel with organized columns by condition"""
-    
+                         save_channel_averages=False, concat_aecc=False, has_headers=True, sv_window=None,
+                         psd_method='multitaper', welch_window_ms=None, welch_overlap=None):
+
+    """
+    Save results to Excel with organized columns by condition.
+
+    Keeps original logic:
+      - Some features only generated if broadband epochs exist.
+      - Broadband entropy/JPE measures are allowed, but separate
+        broadband power columns are skipped.
+      - Dynamically uses FREQUENCY_BANDS for non-broadband frequency bands.
+    """
+
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-        # Save whole-brain averages
+        # 1) Gather all unique conditions
         all_conditions = set()
         for subject_data in results_dict.values():
             all_conditions.update(subject_data.keys())
-        
+
+        # 2) Build a list of primary columns; start with 'subject'
         columns = ['subject']
-        measure_name = "jpe_inv" if invert else "jpe"
-        
-        # Create column names for each condition
+
         for condition in sorted(all_conditions):
+            # --- Complexity Measures (JPE/PE) ---
             if calc_jpe:
-                columns.extend([
-                    f'{condition}_avg_{measure_name}',
-                    f'{condition}_avg_pe',
-                ])
-            
+                # e.g. "myCondition_avg_jpe", "myCondition_avg_pe"
+                measure_name = "jpe_inv" if invert else "jpe"
+                columns.append(f'{condition}_avg_{measure_name}')
+                columns.append(f'{condition}_avg_pe')
+
+            # --- PLI ---
             if calc_pli:
                 columns.append(f'{condition}_avg_pli')
-            
-            if calc_sampen:
-                columns.append(f'{condition}_avg_sampen')
-                
-            if calc_apen:
-                columns.append(f'{condition}_avg_apen')
-            
+
+            # If you also have MST columns for PLI:
+            if calc_pli_mst:
+                # Example MST measures
+                mst_measures = [
+                    'degree', 'eccentr', 'betweenness', 'kappa', 'r',
+                    'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
+                    'ref', 'mean'
+                ]
+                for mm in mst_measures:
+                    columns.append(f'{condition}_pli_mst_{mm}')
+                # Possibly also track valid-epoch counters
+                columns.append(f'{condition}_pli_mst_successful_epochs')
+                columns.append(f'{condition}_pli_mst_total_epochs')
+
+            # --- AEC ---
             if calc_aec:
                 columns.append(f'{condition}_avg_aec')
-                
-                # Add AEC MST measures columns
                 if calc_aec_mst:
-                    mst_measures = ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                  'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                  'ref', 'mean']
-                    for measure in mst_measures:
-                        columns.append(f'{condition}_aec_mst_{measure}')
-                    # Add validation columns
+                    # Add MST columns for AEC if needed
+                    mst_measures = [
+                        'degree', 'eccentr', 'betweenness', 'kappa', 'r',
+                        'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
+                        'ref', 'mean'
+                    ]
+                    for mm in mst_measures:
+                        columns.append(f'{condition}_aec_mst_{mm}')
                     columns.append(f'{condition}_aec_mst_successful_epochs')
                     columns.append(f'{condition}_aec_mst_total_epochs')
+
+            # --- SampEn & ApEn ---
+            if calc_sampen:
+                columns.append(f'{condition}_avg_sampen')
+            if calc_apen:
+                columns.append(f'{condition}_avg_apen')
+
+            # Power & Peak Frequency ---
+            def is_broadband_condition(condition):
+                """Check if condition matches broadband pattern from FREQUENCY_BANDS"""
+                if 'broadband' not in FREQUENCY_BANDS:
+                    return False
+                pattern = FREQUENCY_BANDS['broadband']['pattern']
+                return bool(re.search(pattern, condition, re.IGNORECASE))
             
+            is_broadband_cond = is_broadband_condition(condition)
+            
+            # Power band measures - only for broadband conditions
+            if calc_power and is_broadband_cond:
+                for band_name in FREQUENCY_BANDS:
+                    if band_name.lower() != "broadband":  # Skip broadband
+                        columns.extend([
+                            f'{condition}_{band_name}_abs_power',
+                            f'{condition}_{band_name}_rel_power'
+                        ])
+            
+            # Peak frequency - can be calculated independently
+            if calc_peak and is_broadband_cond:
+                columns.append(f'{condition}_peak_frequency')
+                columns.append(f'{condition}_channels_without_peak')
+
+            # --- Spectral Variability ---
+            if calc_sv and is_broadband_cond:
+                for band_name in FREQUENCY_BANDS:
+                    if band_name.lower() == 'broadband':
+                        continue
+                    columns.append(f'{condition}_sv_{band_name}')
+
+            # Always add epoch count for each condition
             columns.append(f'{condition}_n_epochs')
-            
-            # Add power-related columns for broadband condition
-            if calc_power and '0.5-47' in condition:
-                for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                    columns.extend([
-                        f'{condition}_{band}_abs_power',
-                        f'{condition}_{band}_rel_power'
-                    ])
-            if calc_peak and '0.5-47' in condition:
-                columns.extend([
-                    f'{condition}_peak_frequency',
-                    f'{condition}_channels_without_peak'
-                ])
-            if calc_sv and '0.5-47' in condition:
-                for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                    columns.append(f'{condition}_sv_{band}')
-        
-        # Create rows
+
+        # 3) Build rows of data
         rows = []
         for subject, conditions in results_dict.items():
             row = {'subject': subject}
+
             for condition in sorted(all_conditions):
-                if condition in conditions:
-                    if calc_jpe:
-                        row[f'{condition}_avg_{measure_name}'] = conditions[condition]['avg_jpe']
-                        row[f'{condition}_avg_pe'] = conditions[condition]['avg_pe']
-                    
-                    if calc_pli:
-                        row[f'{condition}_avg_pli'] = conditions[condition].get('avg_pli', np.nan)
-                    
-                    if calc_sampen:
-                        row[f'{condition}_avg_sampen'] = conditions[condition].get('avg_sampen', np.nan)
-                        
-                    if calc_apen:
-                        row[f'{condition}_avg_apen'] = conditions[condition].get('avg_apen', np.nan)
-                    
-                    if calc_aec:
-                        row[f'{condition}_avg_aec'] = conditions[condition]['avg_aec']
-                        
-                        # Add AEC MST measures
-                        if calc_aec_mst:
-                            mst_measures = ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                          'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                          'ref', 'mean']
-                            for measure in mst_measures:
-                                key = f'aec_mst_{measure}'
-                                row[f'{condition}_aec_mst_{measure}'] = conditions[condition].get(key, np.nan)
-                            
-                            # Add validation info
-                            row[f'{condition}_aec_mst_successful_epochs'] = conditions[condition].get('aec_mst_successful_epochs', 0)
-                            row[f'{condition}_aec_mst_total_epochs'] = conditions[condition].get('aec_mst_total_epochs', 0)
-                    
-                    row[f'{condition}_n_epochs'] = conditions[condition]['n_epochs']
-                    
-                    # Add power-related values for broadband condition
-                    if calc_power and '0.5-47' in condition:
-                        for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                            row[f'{condition}_{band}_abs_power'] = conditions[condition].get(f'{band}_abs_power', np.nan)
-                            row[f'{condition}_{band}_rel_power'] = conditions[condition].get(f'{band}_rel_power', np.nan)
-                    if calc_peak and '0.5-47' in condition:
-                        row[f'{condition}_peak_frequency'] = conditions[condition].get('peak_frequency', np.nan)
-                        row[f'{condition}_channels_without_peak'] = conditions[condition].get('channels_without_peak', np.nan)
-                    if calc_sv and '0.5-47' in condition:
-                        for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                            row[f'{condition}_sv_{band}'] = conditions[condition].get(f'sv_{band}', np.nan)
-                else:
-                    # Set NaN values for missing conditions
-                    if calc_jpe:
-                        row[f'{condition}_avg_{measure_name}'] = np.nan
-                        row[f'{condition}_avg_pe'] = np.nan
-                    
-                    if calc_pli:
-                        row[f'{condition}_avg_pli'] = np.nan
-                    
-                    if calc_sampen:
-                        row[f'{condition}_avg_sampen'] = np.nan
-                        
-                    if calc_apen:
-                        row[f'{condition}_avg_apen'] = np.nan
-                    
-                    if calc_aec:
-                        row[f'{condition}_avg_aec'] = np.nan
-                        
-                        # Set NaN for MST measures
-                        if calc_aec_mst:
-                            for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                          'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                          'ref', 'mean']:
-                                row[f'{condition}_aec_mst_{measure}'] = np.nan
-                            row[f'{condition}_aec_mst_successful_epochs'] = 0
-                            row[f'{condition}_aec_mst_total_epochs'] = 0
-                    
-                    row[f'{condition}_n_epochs'] = 0
-                    
-                    # Set NaN for power-related values
-                    if calc_power and '0.5-47' in condition:
-                        for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                            row[f'{condition}_{band}_abs_power'] = np.nan
-                            row[f'{condition}_{band}_rel_power'] = np.nan
-                    if calc_peak and '0.5-47' in condition:
-                        row[f'{condition}_peak_frequency'] = np.nan
-                        row[f'{condition}_channels_without_peak'] = np.nan
-                    if calc_sv and '0.5-47' in condition:
-                        for band in ['delta', 'theta', 'alpha', 'beta1', 'beta2']:
-                            row[f'{condition}_sv_{band}'] = np.nan
-                            
+                data_for_condition = conditions[condition]
+
+                # JPE/PE measures
+                if calc_jpe:
+                    measure_name = "jpe_inv" if invert else "jpe"
+                    row[f'{condition}_avg_{measure_name}'] = data_for_condition.get('avg_jpe', np.nan)
+                    row[f'{condition}_avg_pe'] = data_for_condition.get('avg_pe', np.nan)
+
+                # PLI
+                if calc_pli:
+                    row[f'{condition}_avg_pli'] = data_for_condition.get('avg_pli', np.nan)
+
+                # PLI MST
+                if calc_pli_mst:
+                    mst_measures = [
+                        'degree', 'eccentr', 'betweenness', 'kappa', 'r',
+                        'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
+                        'ref', 'mean'
+                    ]
+                    for mm in mst_measures:
+                        row[f'{condition}_pli_mst_{mm}'] = data_for_condition.get(f'pli_mst_{mm}', np.nan)
+                    row[f'{condition}_pli_mst_successful_epochs'] = data_for_condition.get('pli_mst_degree_valid_epochs', np.nan)
+                    row[f'{condition}_pli_mst_total_epochs'] = data_for_condition.get('pli_mst_total_epochs', np.nan)
+
+                # AEC
+                if calc_aec:
+                    row[f'{condition}_avg_aec'] = data_for_condition.get('avg_aec', np.nan)
+                    if calc_aec_mst:
+                        mst_measures = [
+                            'degree', 'eccentr', 'betweenness', 'kappa', 'r',
+                            'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
+                            'ref', 'mean'
+                        ]
+                        for mm in mst_measures:
+                            row[f'{condition}_aec_mst_{mm}'] = data_for_condition.get(f'aec_mst_{mm}', np.nan)
+                        row[f'{condition}_aec_mst_successful_epochs'] = data_for_condition.get('aec_mst_successful_epochs', np.nan)
+                        row[f'{condition}_aec_mst_total_epochs'] = data_for_condition.get('aec_mst_total_epochs', np.nan)
+
+                # SampEn & ApEn
+                if calc_sampen:
+                    row[f'{condition}_avg_sampen'] = data_for_condition.get('avg_sampen', np.nan)
+                if calc_apen:
+                    row[f'{condition}_avg_apen'] = data_for_condition.get('avg_apen', np.nan)
+
+                # Power & Peak Frequency
+                is_broadband_cond = is_broadband_condition(condition)
+                
+                # Power band measures
+                if calc_power and is_broadband_cond:
+                    for band_name in FREQUENCY_BANDS:
+                        if band_name.lower() == "broadband":
+                            continue
+                        abs_key = f'{band_name}_abs_power'
+                        rel_key = f'{band_name}_rel_power'
+                        row[f'{condition}_{band_name}_abs_power'] = data_for_condition.get(abs_key, np.nan)
+                        row[f'{condition}_{band_name}_rel_power'] = data_for_condition.get(rel_key, np.nan)
+                
+                # Peak frequency
+                if calc_peak and is_broadband_cond:
+                    row[f'{condition}_peak_frequency'] = data_for_condition.get('peak_frequency', np.nan)
+                    row[f'{condition}_channels_without_peak'] = data_for_condition.get('channels_without_peak', np.nan)
+                
+                # Spectral Variability
+                if calc_sv and is_broadband_cond:
+                    for band_name in FREQUENCY_BANDS:
+                        if band_name.lower() == 'broadband':
+                            continue
+                        sv_key = f'sv_{band_name}'
+                        row[f'{condition}_sv_{band_name}'] = data_for_condition.get(sv_key, np.nan)
+
+                # n_epochs
+                row[f'{condition}_n_epochs'] = data_for_condition.get('n_epochs', 0)
+
             rows.append(row)
-        
-        # Create DataFrame and save
+
+        # 4) Create the DataFrame, reorder columns, and export
         df = pd.DataFrame(rows)
-        df = df[columns]  # Reorder columns
+        df = df[columns]  # Force the column order we built above
         df.to_excel(writer, sheet_name='Whole Brain Results', index=False)
         
         # Add analysis information sheet with sampling frequency info and spectral variability window
@@ -1895,7 +2289,10 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                 'AEC MST Calculated',
                 'AEC Force Positive',
                 'Power Bands Calculated',
-                'Sampling Frequency (Hz)',  
+                'Sampling Frequency (Hz)',
+                'PSD Method',
+                'Welch Window Length (ms)',
+                'Welch Overlap (%)',
                 'Peak Frequency Analysis', 
                 'Peak Frequency Range (Hz)', 
                 'Sample Entropy Calculated',
@@ -1915,6 +2312,9 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                 'Yes' if force_positive else 'No',
                 'Yes' if calc_power else 'No',
                 str(power_fs),
+                psd_method,  # New
+                str(welch_window_ms) if psd_method == 'welch' else 'N/A',  # New
+                str(welch_overlap) if psd_method == 'welch' else 'N/A',  # New
                 'Yes' if calc_peak else 'No',
                 f"{calc_peak and f'{peak_min}-{peak_max}' or 'N/A'}", 
                 'Yes' if calc_sampen else 'No',
@@ -1957,12 +2357,18 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                             # Add each measure with condition prefix
                             for measure, value in channel_data.items():
                                 column_name = f'{condition}_{measure}'
-                                row[column_name] = value
+                                if measure.startswith('sv_'):  # Special handling for SV measures
+                                    # SV values are now single values, not averaged
+                                    row[column_name] = value
+                                else:
+                                    # Handle other measures as before
+                                    row[column_name] = value
+                                
                                 if not pd.isna(value):  # Only track columns that have actual data
                                     measures_with_data.add(column_name)
                     
                     channel_rows.append(row)
-            
+        
             if channel_rows:
                 df_channels = pd.DataFrame(channel_rows)
                 
@@ -2002,11 +2408,32 @@ def main():
         
         if event == sg.WIN_CLOSED or event == "Exit":
             break
-            
+        
+        if event == "-PSD_METHOD-":  # When PSD method changes
+            window['-WELCH_PARAMS-'].update(visible=values["-PSD_METHOD-"] == "welch")
+            window.refresh()
+    
         if event == "Process":
             folder_path = values["-FOLDER-"]
             folder_ext = values["-EXTENSION-"].strip()
             
+            # Get PSD method parameters
+            psd_method = values["-PSD_METHOD-"].lower()  # Convert to lowercase
+            welch_window_ms = None
+            welch_overlap = None
+            
+            if psd_method == "welch":
+                try:
+                    welch_window_ms = float(values["-WELCH_WINDOW-"])
+                    welch_overlap = float(values["-WELCH_OVERLAP-"])
+                    if welch_window_ms <= 0:
+                        raise ValueError("Welch window length must be greater than 0")
+                    if not 0 <= welch_overlap <= 100:
+                        raise ValueError("Welch overlap must be between 0 and 100")
+                except ValueError as e:
+                    sg.popup_error(f"Invalid Welch parameters: {str(e)}")
+                    continue
+                    
             # Setup logging first thing
             log_file = setup_logging(folder_path)
             logging.info("=== Starting new analysis run ===")
@@ -2028,6 +2455,12 @@ def main():
                 sg.popup_error("Please select a folder and specify folder extension")
                 continue
             
+            try:
+                validate_frequency_bands()
+            except ValueError as e:
+                sg.popup_error(f"Invalid frequency band configuration: {str(e)}")
+                sys.exit(1)
+                        
             # Get matrix saving options
             save_matrices = values["-SAVE_MATRICES-"]
             matrix_folder = values["-MATRIX_FOLDER-"]
@@ -2151,6 +2584,9 @@ def main():
                     save_matrices=save_matrices,
                     save_mst=save_mst,
                     save_channel_averages=values["-SAVE_CHANNEL_AVERAGES-"],
+                    psd_method=psd_method,
+                    welch_window_ms=welch_window_ms if psd_method == "welch" else None,
+                    welch_overlap=welch_overlap if psd_method == "welch" else None,
                     progress_callback=update_progress
                 )
                 
@@ -2182,6 +2618,9 @@ def main():
                             save_channel_averages=values["-SAVE_CHANNEL_AVERAGES-"],
                             concat_aecc=values["-CONCAT_AECC-"],
                             has_headers=values["-HAS_HEADERS-"],
+                            psd_method=psd_method,  # New
+                            welch_window_ms=welch_window_ms if psd_method == "welch" else None,  # New
+                            welch_overlap=welch_overlap if psd_method == "welch" else None,  # New
                         )
                         # Save matrices if requested
                         matrices_saved = 0
@@ -2282,5 +2721,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
-    
+
