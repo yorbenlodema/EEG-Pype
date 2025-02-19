@@ -37,13 +37,15 @@ If the program glitches or stops working, we found that it works best to stop th
 
 There is currently an unresolved problem where removing multiple ICA components and/or interpolating channels can result in a data rank that is too low to caculate the beamforming solution. See [here](https://mailman.science.ru.nl/pipermail/fieldtrip/2014-March/033565.html) for an explanation of this problem.
 
-When using Spyder IDE to run the program (like we do), initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
+When using Spyder IDE to run the program, initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
 
 It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script. 
 
-When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied consistently across your entire batch of files. It is important to have the same channel names for the entire batch of EEGs that you load at once.
+When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see wether the channel names match the MNE montage.
 
 The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
+
+There is currently no solution for the situation where EEG files that are loaded simultaneously (in the same batch) have different channel names with respect to channel dropping. As long as you do not drop any channels (drop at the batch level, not interpolate) this is no problem, and you should even be able to rename the channel names separately per file. However, the batch-level channel drop functionality expects the same channel names between files, breaking the execution of the script when this is not the case.
 
 ## Installation
 
