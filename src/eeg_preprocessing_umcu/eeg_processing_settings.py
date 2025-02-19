@@ -74,7 +74,7 @@ settings['montage',".bdf_128"] = "biosemi128"
 settings['montage',".edf_bio32"] = "biosemi32"
 settings['montage',".edf_bio64"] = "biosemi64"
 settings['montage',".edf_bio128"] = "biosemi128"
-settings['montage',".edf_10-20"] = "standard_1005"
+settings['montage',".edf_10-20"] = "standard_1020"
 settings['montage',".edf_GSN-Hydrocel_64"] = "GSN-HydroCel-64_1.0"
 settings['montage',".eeg"] = "n/a"
 settings['montage',".fif"] = "n/a"
@@ -142,66 +142,3 @@ settings['input_file_paths','type_EEG']=(("EEG .txt Files", "*.txt"),
 settings['input_file_paths','text']="Select input EEG file(s) - on Mac use 'Options' to filter file types "  
 
 settings['output_txt_decimals']=4 # used in np.round to round down exported txt files
-
-
-
-# Channel names for different montages
-settings['channel_names', 'biosemi64'] = [
-    'Fp1', 'AF7', 'AF3', 'F1', 'F3', 'F5', 'F7', 'FT7',
-    'FC5', 'FC3', 'FC1', 'C1', 'C3', 'C5', 'T7', 'TP7',
-    'CP5', 'CP3', 'CP1', 'P1', 'P3', 'P5', 'P7', 'P9',
-    'PO7', 'PO3', 'O1', 'Iz', 'Oz', 'POz', 'Pz', 'CPz',
-    'Fpz', 'Fp2', 'AF8', 'AF4', 'AFz', 'Fz', 'F2', 'F4',
-    'F6', 'F8', 'FT8', 'FC6', 'FC4', 'FC2', 'FCz', 'Cz',
-    'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2',
-    'P2', 'P4', 'P6', 'P8', 'P10', 'PO8', 'PO4', 'O2'
-]
-
-settings['channel_names', 'biosemi32'] = [
-    'Fp1', 'AF3', 'F7', 'F3', 'FC1', 'FC5', 'T7', 'C3',
-    'CP1', 'CP5', 'P7', 'P3', 'Pz', 'PO3', 'O1', 'Oz',
-    'O2', 'PO4', 'P4', 'P8', 'CP6', 'CP2', 'C4', 'T8',
-    'FC6', 'FC2', 'F4', 'F8', 'AF4', 'Fp2', 'Fz', 'Cz'
-]
-
-settings['channel_names', 'biosemi128'] = [
-    'Fp1', 'AF7', 'AF3', 'F1', 'F3', 'F5', 'F7', 'FT7', 'FC5', 'FC3', 'FC1',
-    'C1', 'C3', 'C5', 'T7', 'TP7', 'CP5', 'CP3', 'CP1', 'P1', 'P3', 'P5', 'P7',
-    'P9', 'PO7', 'PO3', 'O1', 'Iz', 'Oz', 'POz', 'Pz', 'CPz', 'Fpz', 'Fp2', 'AF8',
-    'AF4', 'AFz', 'Fz', 'F2', 'F4', 'F6', 'F8', 'FT8', 'FC6', 'FC4', 'FC2', 'FCz',
-    'Cz', 'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2', 'P2', 'P4', 'P6',
-    'P8', 'P10', 'PO8', 'PO4', 'O2', 'FPz', 'FP1', 'FP2', 'AF9', 'AF10', 'F9',
-    'F10', 'FFT9', 'FFT10', 'FT9', 'FT10', 'A1', 'A2', 'T9', 'T10', 'TTP9',
-    'TTP10', 'TP9', 'TP10', 'I1', 'I2', 'F3h', 'F4h', 'F5h', 'F6h', 'FC3h',
-    'FC4h', 'FC5h', 'FC6h', 'C3h', 'C4h', 'C5h', 'C6h', 'CP3h', 'CP4h', 'CP5h',
-    'CP6h', 'P3h', 'P4h', 'P5h', 'P6h', 'FFC1h', 'FFC2h', 'FFC3h', 'FFC4h',
-    'FFC5h', 'FFC6h', 'FCC1h', 'FCC2h', 'FCC3h', 'FCC4h', 'FCC5h', 'FCC6h',
-    'CCP1h', 'CCP2h', 'CCP3h', 'CCP4h', 'CCP5h', 'CCP6h', 'CPP1h', 'CPP2h',
-    'CPP3h', 'CPP4h', 'CPP5h', 'CPP6h', 'PPO1h', 'PPO2h', 'PPO5h', 'PPO6h'
-]
-
-settings['channel_names', 'standard_1020'] = [
-    'Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'T7',
-    'C3', 'Cz', 'C4', 'T8', 'P7', 'P3', 'Pz', 'P4',
-    'P8', 'O1', 'O2'
-]
-
-settings['channel_names', 'standard_1005'] = [
-    'Nz', 'Fp1', 'Fpz', 'Fp2', 'AF9', 'AF7', 'AF5', 'AF3', 'AF1', 'AFz', 'AF2',
-    'AF4', 'AF6', 'AF8', 'AF10', 'F9', 'F7', 'F5', 'F3', 'F1', 'Fz', 'F2', 'F4',
-    'F6', 'F8', 'F10', 'FT9', 'FT7', 'FC5', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4',
-    'FC6', 'FT8', 'FT10', 'T9', 'T7', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6',
-    'T8', 'T10', 'TP9', 'TP7', 'CP5', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'CP6',
-    'TP8', 'TP10', 'P9', 'P7', 'P5', 'P3', 'P1', 'Pz', 'P2', 'P4', 'P6', 'P8',
-    'P10', 'PO9', 'PO7', 'PO5', 'PO3', 'PO1', 'POz', 'PO2', 'PO4', 'PO6', 'PO8',
-    'PO10', 'O1', 'Oz', 'O2', 'I1', 'Iz', 'I2'
-]
-
-settings['channel_names', 'GSN-HydroCel-64_1.0'] = [
-    'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'E9', 'E10', 'E11', 'E12',
-    'E13', 'E14', 'E15', 'E16', 'E17', 'E18', 'E19', 'E20', 'E21', 'E22', 'E23',
-    'E24', 'E25', 'E26', 'E27', 'E28', 'E29', 'E30', 'E31', 'E32', 'E33', 'E34',
-    'E35', 'E36', 'E37', 'E38', 'E39', 'E40', 'E41', 'E42', 'E43', 'E44', 'E45',
-    'E46', 'E47', 'E48', 'E49', 'E50', 'E51', 'E52', 'E53', 'E54', 'E55', 'E56',
-    'E57', 'E58', 'E59', 'E60', 'E61', 'E62', 'E63', 'E64'
-]

@@ -468,8 +468,13 @@ def implement_channel_corrections(raw, config):
         # These file types have their own channel information, skip correction
         return raw, config
     
-    # For other file types, proceed with channel correction
+    # Use the existing montage mapping from settings
     montage_name = settings['montage', config['input_file_pattern']]
+    
+    if montage_name == "n/a":
+        return raw, config
+        
+    # Get channel names directly from MNE's montage
     corrected_names = show_channel_correction_window(raw, montage_name, settings)
     
     if corrected_names is None:  # User cancelled
@@ -480,19 +485,22 @@ def implement_channel_corrections(raw, config):
     
     # Apply the corrections
     for old_name, new_name in zip(raw.ch_names, corrected_names):
-        raw.rename_channels({old_name: new_name})
+        if old_name != new_name:  # Only rename if different
+            raw.rename_channels({old_name: new_name})
     
     return raw, config
     
 def get_expected_channels(montage_name):
-    """Returns the expected channel names for a given montage from settings."""
+    """Returns the expected channel names for a given montage directly from MNE."""
     if montage_name == "n/a":
         return []  # Return empty list for file types with built-in channel info
         
     try:
-        return settings['channel_names', montage_name]
-    except KeyError:
-        msg = f"Warning: Channel names for montage '{montage_name}' not found in settings"
+        # Create the montage and get channel names directly from MNE
+        montage = mne.channels.make_standard_montage(montage_name)
+        return list(montage.ch_names)  # Convert to list for consistency
+    except Exception as e:
+        msg = f"Warning: Could not get channel names for montage '{montage_name}' from MNE: {str(e)}"
         window['-RUN_INFO-'].update(msg+'\n', append=True)
         return []
 
@@ -502,6 +510,69 @@ def show_channel_correction_window(raw, montage_name, settings):
     # Get expected channel names for the selected montage
     expected_channels = get_expected_channels(montage_name)
     current_channels = raw.ch_names
+    
+    def find_best_match(channel, expected_set):
+        """Find the best matching expected channel name."""
+        if channel in expected_set:
+            return channel
+        # Add more sophisticated matching logic here if needed
+        return ""
+    
+    def create_table_data(current, expected):
+        """Create table data with matched channels aligned."""
+        expected_set = set(expected)
+        current_set = set(current)
+        
+        # First, handle exact matches
+        matched_pairs = []
+        unmatched_current = []
+        used_expected = set()
+        
+        # Find direct matches first
+        for curr in current:
+            if curr in expected_set:
+                matched_pairs.append([curr, curr])
+                used_expected.add(curr)
+            else:
+                unmatched_current.append(curr)
+        
+        # Add remaining channels
+        remaining_expected = [exp for exp in expected if exp not in used_expected]
+        
+        # Combine all rows
+        all_rows = (matched_pairs + 
+                   [[curr, ""] for curr in unmatched_current] +
+                   [["", exp] for exp in remaining_expected])
+        
+        return all_rows
+    
+    def update_table_and_status():
+        """Update the table and matching status."""
+        table_data = create_table_data(modified_channels, expected_channels)
+        window['-CHANNEL_TABLE-'].update(table_data)
+        
+        # Count matches (channels that exist in both sets)
+        matches = len(set(modified_channels) & set(expected_channels))
+        total_expected = len(expected_channels)
+        status = f"Matching Channels: {matches}/{total_expected}"
+        
+        # Add warnings about mismatches
+        warnings = []
+        if len(modified_channels) != len(expected_channels):
+            warnings.append(f"Number of channels doesn't match! Current: {len(modified_channels)}, Expected: {len(expected_channels)}")
+        
+        extra_channels = set(modified_channels) - set(expected_channels)
+        if extra_channels:
+            warnings.append(f"Extra channels found: {', '.join(sorted(extra_channels))}")
+        
+        missing_channels = set(expected_channels) - set(modified_channels)
+        if missing_channels:
+            warnings.append(f"Missing expected channels: {', '.join(sorted(missing_channels))}")
+        
+        if warnings:
+            status += "\n" + "\n".join(warnings)
+        
+        window['-MATCH_STATUS-'].update(status)
     
     # Create layout for the correction window
     layout = [
@@ -516,7 +587,7 @@ def show_channel_correction_window(raw, montage_name, settings):
         
         # Channel comparison table
         [sg.Table(
-            values=[[curr, exp] for curr, exp in zip_longest(current_channels, expected_channels, fillvalue="")],
+            values=create_table_data(current_channels, expected_channels),
             headings=["Current Names", "Expected Names"],
             auto_size_columns=True,
             justification='left',
@@ -537,19 +608,6 @@ def show_channel_correction_window(raw, montage_name, settings):
                       modal=True, finalize=True, resizable=True)
     
     modified_channels = current_channels.copy()
-    
-    def update_table_and_status():
-        """Update the table and matching status."""
-        window['-CHANNEL_TABLE-'].update(
-            [[curr, exp] for curr, exp in zip_longest(modified_channels, expected_channels, fillvalue="")]
-        )
-        matches = sum(1 for curr, exp in zip_longest(modified_channels, expected_channels, fillvalue=None) 
-                     if curr == exp)
-        status = f"Matching Channels: {matches}/{len(expected_channels)}"
-        if len(modified_channels) != len(expected_channels):
-            status += f"\nWarning: Number of channels doesn't match! Current: {len(modified_channels)}, Expected: {len(expected_channels)}"
-        window['-MATCH_STATUS-'].update(status)
-    
     update_table_and_status()
     
     while True:
