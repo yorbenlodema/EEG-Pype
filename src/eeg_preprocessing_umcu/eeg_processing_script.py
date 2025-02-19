@@ -984,7 +984,7 @@ def create_raw(config, montage, no_montage_files):
         
     raw, config = implement_channel_corrections(raw, config)
             
-    if config['file_pattern'] not in no_montage_files and montage != "NA":
+    if config['file_pattern'] not in no_montage_files and montage is not None:
         raw.set_montage(montage=montage, on_missing='ignore')
     
     config['sample_frequency'] = raw.info["sfreq"]
@@ -1322,10 +1322,9 @@ while True:# @noloop remove
             no_montage_patterns = settings['no_montage_patterns']
             config['file_pattern'] = settings['input_file_pattern', config['input_file_pattern']]
             
+            montage = None
             if config['file_pattern'] not in no_montage_patterns:
                 montage = mne.channels.make_standard_montage(settings['montage', config['input_file_pattern']])
-            else:
-                montage = "NA"
 
             # progess bar vars
             lfl = len(config['input_file_paths'])
