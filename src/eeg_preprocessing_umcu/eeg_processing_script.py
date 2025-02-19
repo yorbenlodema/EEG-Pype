@@ -981,8 +981,10 @@ def create_raw(config, montage, no_montage_files):
     elif config['file_pattern'] == "*.cnt":
         raw = mne.io.read_raw_cnt(file_path, preload=True)
         raw.pick_types(eeg=True, meg=False, eog=False)
-    
-    if config['file_pattern'] not in no_montage_files:
+        
+    raw, config = implement_channel_corrections(raw, config)
+            
+    if config['file_pattern'] not in no_montage_files and montage != "NA":
         raw.set_montage(montage=montage, on_missing='ignore')
     
     config['sample_frequency'] = raw.info["sfreq"]
@@ -1324,12 +1326,6 @@ while True:# @noloop remove
                 montage = mne.channels.make_standard_montage(settings['montage', config['input_file_pattern']])
             else:
                 montage = "NA"
-                        
-            # Adjust the file extension as needed to recognize the correct file type
-            if config['file_pattern'] != "*.vhdr" and config['file_pattern'] != "*.fif":
-                montage = mne.channels.make_standard_montage(settings['montage',config['input_file_pattern']])
-            else:
-                montage = "NA"
 
             # progess bar vars
             lfl = len(config['input_file_paths'])
@@ -1357,10 +1353,7 @@ while True:# @noloop remove
                 
                 # Only drop non-EEG channels, not bad channels
                 raw.drop_channels(config['channels_to_be_dropped'])
-                
-                # Possible channel names corrections
-                raw, config = implement_channel_corrections(raw, config)
-                
+                                
                 # Temporary raw file to work with during preprocessing
                 raw_temp = raw.copy()
 
