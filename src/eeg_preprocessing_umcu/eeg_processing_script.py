@@ -463,7 +463,12 @@ def implement_channel_corrections(raw, config):
                 raw.rename_channels({old_name: new_name})
         return raw, config
     
-    # For first run or if no corrections exist
+    # Check if this is a file type that needs channel name verification
+    if config['file_pattern'] in settings['no_montage_patterns']:
+        # These file types have their own channel information, skip correction
+        return raw, config
+    
+    # For other file types, proceed with channel correction
     montage_name = settings['montage', config['input_file_pattern']]
     corrected_names = show_channel_correction_window(raw, montage_name, settings)
     
@@ -478,15 +483,18 @@ def implement_channel_corrections(raw, config):
         raw.rename_channels({old_name: new_name})
     
     return raw, config
-
+    
 def get_expected_channels(montage_name):
     """Returns the expected channel names for a given montage from settings."""
+    if montage_name == "n/a":
+        return []  # Return empty list for file types with built-in channel info
+        
     try:
         return settings['channel_names', montage_name]
     except KeyError:
         msg = f"Warning: Channel names for montage '{montage_name}' not found in settings"
         window['-RUN_INFO-'].update(msg+'\n', append=True)
-        return []  # Return empty list if montage not found
+        return []
 
 def show_channel_correction_window(raw, montage_name, settings):
     """Shows a window for correcting channel names to match the selected montage."""
@@ -497,8 +505,7 @@ def show_channel_correction_window(raw, montage_name, settings):
     
     # Create layout for the correction window
     layout = [
-        [sg.Text("Batch Channel Name Correction", font=('Default', 16, 'bold'))],
-        [sg.Text("These corrections will be applied to all files in the batch", font=('Default', 12))],
+        [sg.Text("Channel Name Correction", font=('Default', 16, 'bold'))],
         
         # Search and replace
         [sg.Frame("Search and Replace", [
@@ -522,11 +529,11 @@ def show_channel_correction_window(raw, montage_name, settings):
         # Status of matches
         [sg.Text("", key='-MATCH_STATUS-', font=('Default', 12))],
         
-        [sg.Button("Apply to Batch", key='-APPLY-', button_color=('white', '#2196F3')),
+        [sg.Button("Apply to file", key='-APPLY-', button_color=('white', '#2196F3')),
          sg.Button("Cancel", key='-CANCEL-')]
     ]
     
-    window = sg.Window("Batch Channel Name Correction", layout, 
+    window = sg.Window("Channel Name Correction", layout, 
                       modal=True, finalize=True, resizable=True)
     
     modified_channels = current_channels.copy()
@@ -913,6 +920,9 @@ def create_raw(config, montage, no_montage_files):
     elif config['file_pattern'] == "*.fif":
         raw = mne.io.read_raw_fif(file_path, preload=True)
         raw.pick_types(eeg=True, meg=False, eog=False)
+    elif config['file_pattern'] == "*.cnt":
+        raw = mne.io.read_raw_cnt(file_path, preload=True)
+        raw.pick_types(eeg=True, meg=False, eog=False)
     
     if config['file_pattern'] not in no_montage_files:
         raw.set_montage(montage=montage, on_missing='ignore')
@@ -1249,7 +1259,7 @@ while True:# @noloop remove
             # reset progress bars
             progress_bar_files.UpdateBar(0,0)
             progress_bar_epochs.UpdateBar(0,0)
-            no_montage_patterns = ["*.vhdr", "*.fif"]
+            no_montage_patterns = settings['no_montage_patterns']
             config['file_pattern'] = settings['input_file_pattern', config['input_file_pattern']]
             
             if config['file_pattern'] not in no_montage_patterns:
