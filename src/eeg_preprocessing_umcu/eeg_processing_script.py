@@ -1118,7 +1118,7 @@ def perform_epoch_selection(raw,config,sfreq):
     events = mne.make_fixed_length_events(raw, duration=(config['epoch_length']))
     epochs = mne.Epochs(raw, events=events, tmin=0, tmax=(
         config['epoch_length']-(1/sfreq)), 
-            baseline=(0, config['epoch_length']-(1/sfreq)), preload=True)
+            baseline=(0, config['epoch_length']-(1/sfreq)), preload=True, detrend=1)
     
     # Generate events at each second as seconds markers for the epochs plot
     time_event_ids = np.arange(config['epoch_length']*len(events))
@@ -1130,7 +1130,7 @@ def perform_epoch_selection(raw,config,sfreq):
     msg = "Select bad epochs by left-clicking data"
     window['-RUN_INFO-'].update(msg+'\n', append=True)
     epochs.plot(n_epochs=1, n_channels=len(
-        raw.ch_names), events=time_events, event_color= 'm',block=True, picks=['eeg', 'eog', 'ecg'])
+        raw.ch_names), events=time_events, event_color= 'm',block=True, picks=['eeg', 'eog', 'ecg', 'meg'])
 
     config[file_name, 'epochs'] = epochs.selection
     return config
@@ -1147,7 +1147,7 @@ def apply_epoch_selection(raw_output,config,sfreq,filtering=False,l_freq=None,h_
     
     events_out = mne.make_fixed_length_events(raw_output, duration=config['epoch_length'])
     epochs_out = mne.Epochs(raw_output, events=events_out, tmin=0, tmax=(config['epoch_length'] - \
-        (1 / sfreq)), baseline=(0, config['epoch_length']))
+        (1 / sfreq)), baseline=(0, config['epoch_length']), detrend=1)
     selected_epochs_out = epochs_out[config[file_name, 'epochs']]
     selected_epochs_out.drop_bad()
     return selected_epochs_out

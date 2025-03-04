@@ -352,6 +352,11 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
     df.to_csv(filepath)
     return filepath
 
+def linear_detrend(data):
+    """Apply linear detrending to each channel"""
+    from scipy import signal
+    return signal.detrend(data, axis=0, type='linear')
+
 def calculate_PSD(data: np.ndarray,
                  fs: float,
                  method: str = 'multitaper',
@@ -510,7 +515,7 @@ def _calculate_welch_psd(data: np.ndarray,
                                    fs=fs,
                                    nperseg=nperseg,
                                    noverlap=noverlap,
-                                   detrend='linear',
+                                   detrend=False, # already done when loading data
                                    scaling='density')
     
     return frequencies, psd
@@ -1339,6 +1344,10 @@ def process_subject_condition(args):
                     logging.warning(f"Found non-numeric values in {os.path.basename(file_path)} that were converted to NaN")
                 
                 data_values = data.values
+                
+                # Apply linear detrending to remove signal drift
+                data_values = linear_detrend(data_values)
+                
                 del data
                 
                 # Determine if any spectral calculations are needed
@@ -1445,8 +1454,7 @@ def process_subject_condition(args):
                                             data = pd.read_csv(file_path, sep=None, engine='python', header=None)
                                         
                                         epoch_data = data.values
-                                        # Apply offset correction for each channel
-                                        epoch_data = epoch_data - np.mean(epoch_data, axis=0)
+
                                         all_data_sv.append(epoch_data)
                                         del data, epoch_data
                                     except Exception as e:
@@ -1601,8 +1609,7 @@ def process_subject_condition(args):
                                     try:
                                         data = pd.read_csv(file_path, sep=None, engine='python')
                                         epoch_data = data.values
-                                        # Apply offset correction for each channel
-                                        epoch_data = epoch_data - np.mean(epoch_data, axis=0)
+
                                         all_data.append(epoch_data)
                                         del data, epoch_data
                                     except Exception as e:
