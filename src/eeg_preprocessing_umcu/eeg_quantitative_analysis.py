@@ -164,13 +164,13 @@ def create_gui():
     BUTTON_COLOR = ('#FFFFFF', '#2C5784')
     
     sg.theme('Default1')
-    sg.set_options(font=('Helvetica', 11))
+    sg.set_options(font=('Helvetica', 10))
     
     header = [
-        [sg.Text("EEG Quantitative Analysis", font=('Helvetica', 24, 'bold'), 
-                text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(20, 10))],
-        [sg.Text("Author: Yorben Lodema", font=('Helvetica', 12, 'italic'), 
-                text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(20, 10))]
+        [sg.Text("EEG Quantitative Analysis", font=('Helvetica', 20, 'bold'), 
+                text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(10, 5))],
+        [sg.Text("Author: Yorben Lodema", font=('Helvetica', 10, 'italic'), 
+                text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(10, 5))]
     ]
     
     # Column 1: Input Settings and Matrix Export
@@ -249,7 +249,7 @@ def create_gui():
                                  font=('Helvetica', 11, 'bold')),
                         sg.Button("Exit", size=(8, 1), button_color=(HEADER_TEXT, '#AB4F4F'),
                                 font=('Helvetica', 11))]], 
-                      justification='center', expand_x=True, pad=(0, 10), background_color=MAIN_BG)],
+                      justification='center', expand_x=True, pad=(0, 5), background_color=MAIN_BG)],
         ], background_color=MAIN_BG)],
     ]
     
@@ -259,8 +259,8 @@ def create_gui():
             [sg.Column(left_column, background_color=MAIN_BG, pad=(5, 5)),
              sg.Column(middle_column, background_color=MAIN_BG, pad=(5, 5)),
              sg.Column(right_column, background_color=MAIN_BG, pad=(5, 5))],
-            [sg.Column(progress_section, background_color=MAIN_BG, pad=(0, 5))]
-        ], background_color=MAIN_BG, pad=(20, 20))]
+            [sg.Column(progress_section, background_color=MAIN_BG, pad=(0, 2))]
+        ], background_color=MAIN_BG, pad=(5, 5))]
     ]
     
     window = sg.Window("EEG Analysis Tool", 
@@ -497,7 +497,7 @@ def _calculate_welch_psd(data: np.ndarray,
                                        fs=fs,
                                        nperseg=nperseg,
                                        noverlap=noverlap,
-                                       detrend='constant',
+                                       detrend='linear',
                                        scaling='density')
     
     # Initialize PSD array with correct dimensions
@@ -510,7 +510,7 @@ def _calculate_welch_psd(data: np.ndarray,
                                    fs=fs,
                                    nperseg=nperseg,
                                    noverlap=noverlap,
-                                   detrend='constant',
+                                   detrend='linear',
                                    scaling='density')
     
     return frequencies, psd
@@ -874,19 +874,20 @@ def calculate_power_bands(frequencies, psd):
 
     # Loop over the frequency bands
     for band_name, band_info in FREQUENCY_BANDS.items():
-        # Optionally skip storing separate 'broadband' results if desired
-        if band_name.lower() == "broadband":
-            continue  # or remove this if you want to save broadband power as well
-
+        # Calculate for all bands including 'broadband'
         fmin, fmax = band_info["range"]
         band_mask = (frequencies >= fmin) & (frequencies <= fmax)
 
-        # Compute absolute power in this band (sum over the freq axis)
+        # Compute absolute power in this band
         abs_power = np.sum(psd[band_mask, :], axis=0)
 
-        # Compute relative power by dividing by the broadband total
+        # Compute relative power
         with np.errstate(divide='ignore', invalid='ignore'):
-            rel_power = abs_power / total_power
+            # For broadband, relative power is 1.0 by definition
+            if band_name.lower() == "broadband":
+                rel_power = np.ones_like(abs_power)
+            else:
+                rel_power = abs_power / total_power
 
         # Store mean abs/rel power across channels
         powers[f"{band_name}_abs_power"] = np.nanmean(abs_power)
@@ -1363,19 +1364,6 @@ def process_subject_condition(args):
                             overlap=0.5 if calc_sv else None,
                             **psd_kwargs
                         )
-                        
-                        # Calculate power bands if requested
-                        # if calc_power:
-                        #     try:
-                        #         powers, channel_powers = calculate_power_bands(
-                        #             frequencies=spectral_data['frequencies'],
-                        #             psd=spectral_data['psd']
-                        #         )
-                                
-                        #         # Store whole-brain averages (just once)
-                        #         for measure, value in powers.items():
-                        #             power_values[measure].append(value)
-                                    
                                     
                         if calc_power:
                             try:
@@ -1633,7 +1621,7 @@ def process_subject_condition(args):
                             
                             # Now use data_values for AEC calculation
                             aec_matrix = calculate_aecc(data_values, orthogonalize=use_aecc, force_positive=force_positive)
-                
+                    
                             if save_matrices:
                                 avg_matrices['aec'] = aec_matrix
                             
@@ -1672,8 +1660,14 @@ def process_subject_condition(args):
                             if save_channel_averages:
                                 channel_aec = np.mean(aec_matrix, axis=1)
                                 for ch in range(len(channel_names)):
-                                    channel_results[channel_names[ch]]['aec'] = [channel_aec[ch]]
-                
+                                    ch_name = channel_names[ch]
+                                    # Initialize list if needed
+                                    if 'aec' not in channel_results[ch_name]:
+                                        channel_results[ch_name]['aec'] = []
+                                    # Always append to list (even for concatenated case)
+                                    channel_results[ch_name]['aec'].append(channel_aec[ch])
+                                logging.info(f"Added AEC channel data for concatenated processing")
+                    
                         else:
                             # Original epoch-by-epoch processing (keep existing code)
                             aec_matrix = calculate_aecc(data_values, orthogonalize=use_aecc, force_positive=force_positive)
@@ -1700,7 +1694,17 @@ def process_subject_condition(args):
                                                   'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
                                                   'ref', 'mean']:
                                         aec_mst_values[measure].append(np.nan)
-                
+                            
+                            if save_channel_averages:
+                                channel_aec = np.mean(aec_matrix, axis=1)
+                                for ch in range(len(channel_names)):
+                                    ch_name = channel_names[ch]
+                                    # Initialize list if needed
+                                    if 'aec' not in channel_results[ch_name]:
+                                        channel_results[ch_name]['aec'] = []
+                                    # Always append to list
+                                    channel_results[ch_name]['aec'].append(channel_aec[ch])
+                    
                     except Exception as e:
                         logging.error(f"Error calculating AEC{'c' if use_aecc else ''}: {str(e)}")
                         aec_values.append(np.nan)
