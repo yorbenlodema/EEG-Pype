@@ -68,6 +68,7 @@ settings['no_montage_patterns'] = ["*.vhdr", "*.fif", "*.cnt"]
 settings['montage',".txt_bio32"] = "biosemi32"
 settings['montage',".txt_bio64"] = "biosemi64"
 settings['montage',".txt_10-20"] = "standard_1020"
+settings['montage',".txt_MEG"] = "MEG"
 settings['montage',".bdf_32"] = "biosemi32"
 settings['montage',".bdf_64"] = "biosemi64"
 settings['montage',".bdf_128"] = "biosemi128"
@@ -83,6 +84,7 @@ settings['montage',".edf_GSN-Hydrocel_64"] = "GSN-HydroCel-64_1.0"
 settings['input_file_pattern',".txt_bio32"] = "*.txt"
 settings['input_file_pattern',".txt_bio64"] = "*.txt"
 settings['input_file_pattern',".txt_10-20"] = "*.txt"
+settings['input_file_pattern',".txt_MEG"] = "*.txt"
 settings['input_file_pattern',".bdf_32"] = "*.bdf"
 settings['input_file_pattern',".bdf_64"] = "*.bdf"
 settings['input_file_pattern',".bdf_128"] = "*.bdf"
@@ -128,7 +130,7 @@ settings['use_split_beta'] = False
 
 settings['input_file_patterns'] = ['.bdf_32', '.bdf_64', '.bdf_128', '.edf_bio32', '.edf_bio64',
                        '.edf_bio128', '.edf_10-20', '.fif', '.eeg', '.edf_GSN-Hydrocel_64', 
-                       '.txt_bio32', '.txt_bio64', '.txt_10-20', '.cnt']
+                       '.txt_bio32', '.txt_bio64', '.txt_10-20', '.cnt', ".txt_MEG"]
 # text & tool tips
 settings['input_file_patterns','text']="Enter file type"
 settings['input_file_patterns','tooltip']='Enter one filetype and electrode layout: .bdf 32ch, .bdf 64ch, .bdf 128ch, .edf biosemi 32 layout,\n .edf biosemi 64 layout, .edf biosemi 128 layout, .edf general 10-20 layout, .eeg, .txt biosemi 32 layout,\n .txt biosemi 64 layout, .txt general 10-20 layout, \nsee https://mne.tools/dev/auto_tutorials/intro/40_sensor_locations.html for the electrode layouts (montages) used'

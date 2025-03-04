@@ -922,6 +922,17 @@ def create_raw(config, montage, no_montage_files):
                     'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2',
                     'P2', 'P4', 'P6', 'P8', 'P10', 'PO8', 'PO4', 'O2'
                 ]
+            elif config['channel_names_row'] is None and settings['montage', config['input_file_pattern']] == "MEG":
+                ch_names = [
+                    'Fp1', 'AF7', 'AF3', 'F1', 'F3', 'F5', 'F7', 'FT7',
+                    'FC5', 'FC3', 'FC1', 'C1', 'C3', 'C5', 'T7', 'TP7',
+                    'CP5', 'CP3', 'CP1', 'P1', 'P3', 'P5', 'P7', 'P9',
+                    'PO7', 'PO3', 'O1', 'Iz', 'Oz', 'POz', 'Pz', 'CPz',
+                    'Fpz', 'Fp2', 'AF8', 'AF4', 'AFz', 'Fz', 'F2', 'F4',
+                    'F6', 'F8', 'FT8', 'FC6', 'FC4', 'FC2', 'FCz', 'Cz',
+                    'C2', 'C4', 'C6', 'T8', 'TP8', 'CP6', 'CP4', 'CP2',
+                    'P2', 'P4', 'P6', 'P8', 'P10', 'PO8', 'PO4', 'O2'
+                ]
             elif config['channel_names_row'] is not None:
                 # Read channel names from header if specified
                 with open(file_path, 'r') as file:
@@ -940,7 +951,10 @@ def create_raw(config, montage, no_montage_files):
         # Read data after skipping header rows
         df = pd.read_csv(file_path, sep='\s+', skiprows=config['header_rows'])
         
-        ch_types = ["eeg"] * len(ch_names)
+        if settings['montage', config['input_file_pattern']] == "MEG":
+            ch_types = ["meg"] * len(ch_names)
+        else:
+            ch_types = ["eeg"] * len(ch_names)
         info = mne.create_info(
             ch_names=ch_names, 
             sfreq=config['sample_frequency'], 
@@ -1323,7 +1337,7 @@ while True:# @noloop remove
             config['file_pattern'] = settings['input_file_pattern', config['input_file_pattern']]
             
             montage = None
-            if config['file_pattern'] not in no_montage_patterns:
+            if config['file_pattern'] not in no_montage_patterns and settings['montage', config['input_file_pattern']] != "MEG":
                 montage = mne.channels.make_standard_montage(settings['montage', config['input_file_pattern']])
 
             # progess bar vars
