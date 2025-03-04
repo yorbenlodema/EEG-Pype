@@ -354,7 +354,7 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
 
 def linear_detrend(data):
     """Apply linear detrending to each channel"""
-    from scipy import signal
+
     return signal.detrend(data, axis=0, type='linear')
 
 def calculate_PSD(data: np.ndarray,
@@ -502,7 +502,7 @@ def _calculate_welch_psd(data: np.ndarray,
                                        fs=fs,
                                        nperseg=nperseg,
                                        noverlap=noverlap,
-                                       detrend='linear',
+                                       detrend=False,
                                        scaling='density')
     
     # Initialize PSD array with correct dimensions
