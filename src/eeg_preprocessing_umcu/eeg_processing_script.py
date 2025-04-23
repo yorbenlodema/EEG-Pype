@@ -997,7 +997,17 @@ def create_raw(config, montage, no_montage_files):
         raw.pick_types(eeg=True, meg=False, eog=False)
         
     raw, config = implement_channel_corrections(raw, config)
-            
+    
+    ecg_map = {
+        ch_name: 'ecg'
+        for ch_name in raw.ch_names
+        # Check name contains 'ecg' (case-insensitive) AND type isn't already 'ecg'
+        if 'ecg' in ch_name.lower() and raw.get_channel_types([ch_name])[0] != 'ecg'
+    }
+    if ecg_map:
+        raw.set_channel_types(mapping=ecg_map, on_unit_change='ignore', verbose=False)
+        print(f"Automatically setting channel types for: {list(ecg_map.keys())}")
+                
     if config['file_pattern'] not in no_montage_files and montage is not None:
         raw.set_montage(montage=montage, on_missing='ignore')
     

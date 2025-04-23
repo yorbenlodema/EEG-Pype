@@ -30,29 +30,29 @@ MAX_MEMORY_PERCENT = 70  # Maximum memory usage percentage
 # bands in the same format.
 FREQUENCY_BANDS = {
     "delta": {
-        "pattern": r"0\.5-4\.0",
+        "pattern": r"0\.5-4\.0|delta",
         "range": (0.5, 4.0)
     },
     "theta": {
-        "pattern": r"4\.0-8\.0",
+        "pattern": r"4\.0-8\.0|theta",
         "range": (4.0, 8.0)
     },
     "alpha": {
-        "pattern": r"8\.0-13\.0",
+        "pattern": r"8\.0-13\.0|alpha",
         "range": (8.0, 13.0)
     },
     "beta1": {
-        "pattern": r"13\.0-20\.0",
+        "pattern": r"13\.0-20\.0|beta1",
         "range": (13.0, 20.0)
     },
     "beta2": {
-        "pattern": r"20\.0-30\.0",
+        "pattern": r"20\.0-30\.0|beta2",
         "range": (20.0, 30.0)
     },
     # Keep broadband (with this exact name) since this band is used for power and SV calculations.
     # It's fine if broadband refers to unfiltered epochs, power and SV calculations create a new PSD.
     "broadband": {
-        "pattern": r"0\.5-47",
+        "pattern": r"0\.5-47|broadband",
         "range": (0.5, 47.0)
     }
 }
@@ -1244,6 +1244,7 @@ def parse_epoch_filename(filename):
     """
     Parse epoch filename to extract components
     Example: testjulia20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
+    Alternative: 41_Source_level_broadband_Epoch1.txt
     """
     # Extract the base name (everything before first underscore)
     base_name = filename.split('_')[0]
@@ -1252,9 +1253,19 @@ def parse_epoch_filename(filename):
     level_match = re.search(r'(Source|Sensor)_level', filename)
     level_type = level_match.group(1).lower() if level_match else "unknown"
     
-    # Extract frequency band
+    # Extract frequency band - try numerical range first
     freq_match = re.search(r'(\d+\.?\d*-\d+\.?\d*)\s*Hz', filename)
-    freq_band = freq_match.group(1) if freq_match else "unknown"
+    if freq_match:
+        freq_band = freq_match.group(1)
+    else:
+        # Try to extract broadband text
+        parts = filename.split('_')
+        for i, part in enumerate(parts):
+            if part.lower() == "level" and i+1 < len(parts):
+                freq_band = parts[i+1]
+                break
+        else:
+            freq_band = "unknown"
     
     return {
         'base_name': base_name,
@@ -1767,7 +1778,7 @@ def process_subject_condition(args):
                     avg_matrices[key] /= n_epochs
                     logging.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
             
-        # Now calculate MSTs from averaged connectivity matrices if needed
+        # Now calculate MSTs from averaged connectivity matrices if needed                    
         if save_mst:
             # Handle PLI MST
             if calc_pli_mst and avg_matrices['pli'] is not None:
@@ -1776,12 +1787,24 @@ def process_subject_condition(args):
                     if success:
                         mst_matrix_symmetric = mst_matrix + mst_matrix.T
                         avg_matrices['pli_mst'] = mst_matrix_symmetric
-                
                         logging.info(f"Calculated PLI MST from averaged connectivity matrix for {subject}-{condition}")
                     else:
                         logging.warning(f"Could not calculate PLI MST from averaged matrix for {subject}-{condition}")
                 except Exception as e:
                     logging.error(f"Error calculating PLI MST from averaged matrix: {str(e)}")
+                    
+            # Handle AEC MST
+            if calc_aec_mst and avg_matrices['aec'] is not None and not concat_aecc:
+                try:
+                    mst_measures, mst_matrix, success = calculate_mst_measures(avg_matrices['aec'])
+                    if success:
+                        mst_matrix_symmetric = mst_matrix + mst_matrix.T
+                        avg_matrices['aec_mst'] = mst_matrix_symmetric
+                        logging.info(f"Calculated AEC MST from averaged connectivity matrix for {subject}-{condition}")
+                    else:
+                        logging.warning(f"Could not calculate AEC MST from averaged matrix for {subject}-{condition}")
+                except Exception as e:
+                    logging.error(f"Error calculating AEC MST from averaged matrix: {str(e)}")
             
         # Prepare results dictionary
         results = {
@@ -1952,7 +1975,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
                 continue
                 
             # Check if file matches epoch pattern
-            if '_level_' in file and '_Epoch_' in file:
+            if '_level_' in file and ('_Epoch_' in file or '_Epoch' in file):
                 try:
                     file_info = parse_epoch_filename(file)
                     full_path = os.path.join(subdir_path, file)
