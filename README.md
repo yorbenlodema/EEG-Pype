@@ -43,6 +43,10 @@ It is possible to change the underlying Python code (however, this is mostly unn
 
 When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see wether the channel names match the MNE montage.
 
+When plotting the EEG channels side by side, note that ECG channels should be purple if recognized correctly:
+![SCR-20250423-iyif](https://github.com/user-attachments/assets/b43621ec-3d84-44e4-a404-b1b499e9fe4d)
+If this is not the case, these channels might be included in operations like average referencing.
+
 The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
 
 There is currently no solution for the situation where EEG files that are loaded simultaneously (in the same batch) have different channel names with respect to channel dropping. As long as you do not drop any channels (drop at the batch level, not interpolate) this is no problem, and you should even be able to rename the channel names separately per file. However, the batch-level channel drop functionality expects the same channel names between files, breaking the execution of the script when this is not the case.
