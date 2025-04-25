@@ -1172,16 +1172,27 @@ def calculate_pe(data, n=4, st=1):
     
     return np.array(PEs)
 
-def find_mirror_patterns(combinations, n):
-    """Create a lookup dictionary for mirror patterns"""
+def find_mirror_patterns(combinations):
+    """Create a lookup dictionary for mirror patterns (assumes 0-based ranks)."""
+    if not combinations:
+        return {}
     mirrors = {}
+    n = len(combinations[0]) # Determine embedding dimension FROM the permutation length
+    mirror_sum = n - 1      # Correct target sum for 0-based ranks
+
     for i, perm1 in enumerate(combinations):
-        for j, perm2 in enumerate(combinations):
-            if i != j:
-                if all(a + b == n + 1 for a, b in zip(perm1, perm2)):
-                    mirrors[i] = j
-                    mirrors[j] = i
-                    break
+        # Optimization: only need to check j > i
+        for j in range(i + 1, len(combinations)):
+             perm2 = combinations[j]
+             # Check if perm2 is the mirror of perm1
+             is_mirror = True
+             for k in range(n): # Iterate through elements of the permutations
+                 if perm1[k] + perm2[k] != mirror_sum:
+                     is_mirror = False
+                     break # No need to check further elements
+             if is_mirror:
+                mirrors[i] = j
+                mirrors[j] = i
     return mirrors
 
 def is_volume_conduction(pattern1, pattern2, mirrors):
@@ -1204,7 +1215,9 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
     data = np.asarray(data)
     sz = data.shape[0]
     combinations = list(itertools.permutations(np.arange(0,n), n))
-    mirrors = find_mirror_patterns(combinations, n-1)
+    #mirrors = find_mirror_patterns(combinations, n-1)
+    
+    mirrors = find_mirror_patterns(combinations)
     
     # Modified to separate pattern step size from sampling interval
     rank_inds = []
