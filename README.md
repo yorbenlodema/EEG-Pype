@@ -160,6 +160,8 @@ python -m pip install .
 ### Overview
 The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs. Different from the preprocessing software, this program is best run from the command line due to compatibility issues of the parallel processing implementation with IDEs like Spyder. To do this, simply change directory to the folder containing the Python script and use (similar to): ```python eeg_quantitative_analysis.py```. Then, the GUI should load automatically.
 
+Depending on your setup, it is probably advisable to not run too many EEGs in one go in the analysis script, since this can cause problems (probably memory-related) when saving the analysis output. Amounts of around 100-200 EEGs should work.
+
 ### Data Requirements
 - Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script.
 - Each folder should contain epoch files in .txt format.
