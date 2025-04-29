@@ -162,8 +162,10 @@ The EEG Quantitative Analysis Tool is a GUI-based application for calculating va
 
 Depending on your setup, it is probably advisable to not run too many EEGs in one go in the analysis script, since this can cause problems (probably memory-related) when saving the analysis output. Amounts of around 100-200 EEGs should work.
 
+In the GUI, the number of threads should be specified. This number means that the calculations will be spread over multiple CPU cores. It is advisable to leave one, or even two, of your available cores free for other tasks your computer has to perform to prevent freezes. If the script runs into memory problems, especially when calculating entropy measures, it can be necessary to lower the number of threads the analyses run on.
+
 ### Data Requirements
-- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script.
+- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script. This extension is specified in the "Folder extension" field. 
 - Each folder should contain epoch files in .txt format.
 - Epoch files should follow the naming convention: `[subject]_[level]_level_[frequency]Hz_Epoch_[number].txt`.
 - Data can be loaded with or without headers:
