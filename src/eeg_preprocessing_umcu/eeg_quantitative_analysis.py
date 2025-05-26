@@ -1709,7 +1709,7 @@ def process_subject_condition(args):
                                 logger.info(f"Processing concatenated spectral variability for {subject} - {condition}")
 
                                 # Read and store all epochs with offset correction
-                                for file_path in epoch_files:
+                                for file_path in epoch_files:  # TODO: this overwrites the loop variable `file_path` from line 1559, which should lead to buggy behavior!
                                     try:
                                         if has_headers:
                                             data = pd.read_csv(file_path, sep=None, engine="python")
@@ -1879,7 +1879,7 @@ def process_subject_condition(args):
 
                             try:
                                 # Read and store all epochs with offset correction
-                                for file_path in epoch_files:
+                                for file_path in epoch_files:  # TODO: this overwrites the loop variable `file_path` from line 1559, which should lead to buggy behavior!
                                     try:
                                         data = pd.read_csv(file_path, sep=None, engine="python")
                                         epoch_data = data.to_numpy()
