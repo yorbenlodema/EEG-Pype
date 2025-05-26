@@ -540,7 +540,6 @@ def calculate_PSD(
     fs: float,
     method: str = "multitaper",
     freq_range: Optional[tuple[float, float]] = None,
-    compute_spectrogram: bool = False,
     **kwargs,
 ) -> dict[str, np.ndarray]:
     """
@@ -556,8 +555,6 @@ def calculate_PSD(
         Method to use for PSD calculation ('multitaper', 'welch', 'fft')
     freq_range : tuple, optional
         Frequency range to return (min_freq, max_freq)
-    compute_spectrogram : bool
-        Whether to compute and return spectrogram
     **kwargs : dict
         Method-specific parameters:
             Welch:
@@ -956,7 +953,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
         return None
 
 
-def smooth_spectrum(frequencies, power_spectrum, smoothing_window=5):
+def smooth_spectrum(power_spectrum, smoothing_window=5):
     """Apply moving average smoothing to power spectrum."""
     return np.convolve(power_spectrum, np.ones(smoothing_window) / smoothing_window, mode="same")
 
@@ -1609,7 +1606,7 @@ def process_subject_condition(args):
                         f"Found non-numeric values in {os.path.basename(file_path)} that were converted to NaN"
                     )
 
-                data_values = data.values
+                data_values = data.to_numpy()
 
                 # Apply linear detrending to remove signal drift
                 data_values = linear_detrend(data_values)
@@ -1696,7 +1693,7 @@ def process_subject_condition(args):
                                     try:
                                         test_data = pd.read_csv(
                                             epoch_files[0], sep=None, engine="python", header=0 if has_headers else None
-                                        ).values
+                                        ).to_numpy()
                                         if not MemoryMonitor.check_concatenation_safety(
                                             test_data.nbytes, len(epoch_files)
                                         ):
@@ -1719,7 +1716,7 @@ def process_subject_condition(args):
                                         else:
                                             data = pd.read_csv(file_path, sep=None, engine="python", header=None)
 
-                                        epoch_data = data.values
+                                        epoch_data = data.to_numpy()
 
                                         all_data_sv.append(epoch_data)
                                         del data, epoch_data
@@ -1885,7 +1882,7 @@ def process_subject_condition(args):
                                 for file_path in epoch_files:
                                     try:
                                         data = pd.read_csv(file_path, sep=None, engine="python")
-                                        epoch_data = data.values
+                                        epoch_data = data.to_numpy()
 
                                         all_data.append(epoch_data)
                                         del data, epoch_data
@@ -2064,8 +2061,8 @@ def process_subject_condition(args):
 
         # First normalize averaged connectivity matrices
         n_epochs = len(epoch_files)
-        for key in avg_matrices:
-            if avg_matrices[key] is not None and not (concat_aecc and key == "aec"):
+        for key, value in avg_matrices.items():
+            if value is not None and not (concat_aecc and key == "aec"):
                 # Only normalize if not using concatenation or if this isn't an AEC matrix
                 avg_matrices[key] /= n_epochs
                 logger.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
@@ -2203,7 +2200,7 @@ def process_subject_condition(args):
             "avg_sampen": np.nan,
             "n_epochs": 0,
             "channel_names": [],
-            "matrices": None if save_matrices else None,
+            "matrices": None,
             "channel_averages": None,
         }
 
@@ -2266,10 +2263,7 @@ def process_batch(batch_args, n_threads):
     """Process a batch of subjects using multiprocessing with fallback."""
     try:
         with Pool(processes=n_threads, maxtasksperchild=1) as pool:
-            results = []
-            for result in pool.imap_unordered(process_subject_condition, batch_args):
-                results.append(result)
-            return results
+            return list(pool.imap_unordered(process_subject_condition, batch_args))
     except Exception:
         logger.exception("Pool processing failed, falling back to single thread")
         return [process_subject_condition(args) for args in batch_args]
@@ -2305,7 +2299,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
 
         # Look for epoch files in this directory
         for file in os.listdir(subdir_path):
-            if file.startswith(".") or file.startswith("._"):
+            if file.startswith((".", "._")):
                 continue
 
             if not file.endswith(".txt"):
@@ -2806,7 +2800,7 @@ def save_results_to_excel(
                 str(welch_window_ms) if psd_method == "welch" else "N/A",  # New
                 str(welch_overlap) if psd_method == "welch" else "N/A",  # New
                 "Yes" if calc_peak else "No",
-                f"{calc_peak and f'{peak_min}-{peak_max}' or 'N/A'}",
+                f"{(calc_peak and f'{peak_min}-{peak_max}') or 'N/A'}",
                 "Yes" if calc_sampen else "No",
                 "Yes" if calc_apen else "No",
                 "Yes" if calc_sv else "No",
@@ -2823,8 +2817,8 @@ def save_results_to_excel(
         if save_channel_averages:
             # First, gather all unique channels across all conditions
             all_channels = set()
-            for subject, conditions in results_dict.items():
-                for condition, result in conditions.items():
+            for conditions in results_dict.values():
+                for result in conditions.values():
                     if result.get("channel_averages"):
                         all_channels.update(result["channel_averages"].keys())
 
@@ -3140,7 +3134,7 @@ def main():
 
                             for subject, conditions in results.items():
                                 for condition, result in conditions.items():
-                                    if "matrices" in result and result["matrices"]:
+                                    if result.get("matrices"):
                                         freq_band = extract_freq_band(condition)
                                         matrices = result["matrices"]
                                         current_channel_names = result["channel_names"]

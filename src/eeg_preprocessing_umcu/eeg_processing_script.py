@@ -718,7 +718,7 @@ def get_expected_channels(montage_name):
         return []
 
 
-def show_channel_correction_window(raw, montage_name, settings):
+def show_channel_correction_window(raw, montage_name):
     """Show a window for correcting channel names to match the selected montage."""
     # Get expected channel names for the selected montage
     expected_channels = get_expected_channels(montage_name)
@@ -1104,7 +1104,7 @@ def create_dict():
         window.close()
 
 
-def create_spatial_filter(raw_b, config):
+def create_spatial_filter(raw_b):
     """Create a spatial filter for the LCMV beamforming method.
 
     The MNE function make_lcmv is used.
@@ -1116,7 +1116,7 @@ def create_spatial_filter(raw_b, config):
     bem = os.path.join(fs_dir, "bem", "fsaverage-5120-5120-5120-bem-sol.fif")
     # Setting up source space according to Desikan-Killiany atlas
     DesikanVox = pd.read_excel("DesikanVox.xlsx", header=None)
-    Voxels_pos = DesikanVox.values
+    Voxels_pos = DesikanVox.to_numpy()
     Voxels_pos = Voxels_pos.astype(float)
     Voxels_nn = -Voxels_pos
     # Normalize the normals to unit length
@@ -1309,7 +1309,7 @@ def create_raw(config, montage, no_montage_files):
             elif config["channel_names_row"] is not None:
                 # Read channel names from header if specified
                 with open(file_path) as file:
-                    for i in range(config["channel_names_row"] + 1):
+                    for _ in range(config["channel_names_row"] + 1):
                         header = file.readline().strip()
                     ch_names = header.split()
             else:
@@ -1342,10 +1342,7 @@ def create_raw(config, montage, no_montage_files):
         samples = df.T * 1e-6  # Scaling from µV to V
         raw = mne.io.RawArray(samples, info)
 
-        missing_channels = []
-        for col in df.columns:
-            if df[col].isna().any():
-                missing_channels.append(str(col))
+        missing_channels = [str(col) for col in df.columns if df[col].isna().any()]
 
         if missing_channels:
             missing_str = ", ".join(missing_channels)
@@ -1920,7 +1917,7 @@ while True:  # @noloop remove
                         save_epoch_data_to_txt(
                             selected_epochs_source,
                             config["file_path_source"],
-                            scalings=dict(eeg=10, mag=1e15, grad=1e13),
+                            scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
                         )
 
                         if config["apply_output_filtering"]:
@@ -1937,7 +1934,7 @@ while True:  # @noloop remove
                                 save_epoch_data_to_txt(
                                     selected_epochs_source_filt,
                                     config["file_path_source"],
-                                    scalings=dict(eeg=10, mag=1e15, grad=1e13),
+                                    scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
                                     filtering=True,
                                     l_freq=config["cut_off_frequency", low_band],
                                     h_freq=config["cut_off_frequency", high_band],
@@ -1973,7 +1970,10 @@ while True:  # @noloop remove
 
                     if config["apply_beamformer"]:
                         save_whole_EEG_to_txt(
-                            raw_source, config, config["file_path_source"], scalings=dict(eeg=10, mag=1e15, grad=1e13)
+                            raw_source,
+                            config,
+                            config["file_path_source"],
+                            scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
                         )
 
                         if config["apply_output_filtering"]:
@@ -1992,7 +1992,7 @@ while True:  # @noloop remove
                                     raw_source_filt,
                                     config,
                                     config["file_path_source"],
-                                    scalings=dict(eeg=10, mag=1e15, grad=1e13),
+                                    scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
                                     filtering=True,
                                     l_freq=config["cut_off_frequency", low_band],
                                     h_freq=config["cut_off_frequency", high_band],
