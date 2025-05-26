@@ -742,7 +742,7 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float):
         verbose=False,
     )
 
-    # print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")
+    # print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")  #noqa: ERA001
 
     return freqs, psds.T
 
@@ -1426,7 +1426,7 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
     data = np.asarray(data)
     sz = data.shape[0]
     combinations = list(itertools.permutations(np.arange(0, n), n))
-    # mirrors = find_mirror_patterns(combinations, n-1)
+    # mirrors = find_mirror_patterns(combinations, n-1) noqa: ERA001
 
     mirrors = find_mirror_patterns(combinations)
 

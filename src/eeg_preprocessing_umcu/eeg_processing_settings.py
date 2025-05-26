@@ -6,7 +6,7 @@ import mne
 PySimpleGUI_License = "e1yWJaMdasWkN4l4b7nYNllfVqHolVwwZUS5IA6pIekqRAp7cf3FRNyZakWgJy1ldnGXlZv7bhi9Ihs0Ifkvxbp2YA2KVOuKct2IVPJHRsC1IZ6tMETZcDyzOjDDQI2KMEzVIM3WMoSXw2izTBGmlgjvZrWx5GzDZHUvR0lZcOGCxBvSeXWR1OlFbsnKRlWGZkXNJYzXaLWC9TuQIljdo8iaNpSW4GwlIiiBwZi0TOmBFwtvZnUCZrpQc3ntNF0IIcj3ozi6W3Wj9QycYnmfV7u4ImirwWiLTimEFutRZ8Ujxih2c238QuirOCi9JAMabp29R9lzbBWSE9i2LWCrJkDfbX2A1vwVYAWY5y50IEjGojizI4itwdikQk3XVdzJdnGF94tYZjXDJnJhRpCNIr6RIijsQVxDNgjmYQyvIki5wWitRgGVFK0BZqUol9z8cU3cVIlyZaCkIY6uITj1IcwxMcjgQytEMtTZAztcMnD3k0ieLgCGJwEBYvXXRlldRuXLhgwwavX0J8lycMydIL6QI5j7IVwwMCjZYotyMgTmA6tQMmDUkZivLzCZJLFEbZWOFGp1biEHFjkAZ5HMJAlIcP3RMtinOoiaJJ5gbP3JJRimZIWn50sZbd2CRjlxbfWUFyAhcRHHJNv7d4Gf94uFLgmg1TlPIpilwAihS8VkBBBnZ8GER2yKZeX9NmzdIwjqociiMqTDQjz6LYj8Eky4MqSc4gydM5zvkfueMQTlEuiOf9Qt=e=R474cb6624d46e0ffc4738da48ec40ec6c752493664e4752ff53db807cace7e4621380eceb4d5de156b785a4403be2968b7a6a22be5c76e8b9cda0494edde848854d6e93a408dc85a76a78ee44989fdb316aafe12f99184914c3eec2accd1689a7983cb8f627bbf1c1ce62f546cc997b117824f4bed3d811de3d6eefd462b467e4bf7bd325190f51155d825c4ba5f300245d7b67550db63b79c8ffc6a34adf6fda39fcd06e2ab1406812358a35ac9f95eca70f2369b30c64b8b61a8e5ae61aa337084058d6616a62e06a4d4a75f10498e2d8a535e4f9dcc1ab389b8bb1a1528df10f2e8b9137f1d9b337c4dca8e20eec88414377e4e374e231b63e0eeae6d2490a0960db48c15809ff54ae57ae06fb1e9679b64dbba7458a9ae271203fa38d2582b5492c92269e8af8ec7cd3e88b50fbaa8a616fa3091ce0a1b5a90abe67666dc7c30d83f4c175d759481f7bda16854a7c1c52148763b845bba4303a8ea97104cdc0258b227c08f59d18db8b753b21f5caa0a47c28958d09ed5cd65c86741a5424a118cb0336ee21aa8e7caa2dc99a093c8d4ec1f77ebf0edebc4b4a59b2014bd44597b3a46b97b3471f8ef2314fe0cc2786e03a1c1881fe3a9c5fdf5b993cde580024846d9921808d77889b25eeea64761c94b44582e0b630a8b888e6d51574b89e1f4fa872f61d1a4842e09ea9db5cd5ae5ed40fc2a96e59b5c62c72d9734b0"  # noqa: E501
 import PySimpleGUI as sg  # noqa: E402
 
-# mpl.use('Qt5Agg')  # Set the backend to Qt5
+# mpl.use('Qt5Agg')  # Set the backend to Qt5  #noqa: ERA001 #TODO: check ERA001 statements to see if you can remove the lines
 mpl.use("TkAgg")  # Setting bakcend working best for Spyder
 mne.set_config("MNE_BROWSER_BACKEND", "matplotlib")  # Setting for Spyder
 
@@ -33,7 +33,7 @@ settings["apply_output_filtering"] = 0
 settings["epoch_length"] = 0.0
 settings["apply_ica"] = 0
 settings["rerun"] = 0
-# settings['rerun_no_previous_epoch_selection'] = 0
+# settings['rerun_no_previous_epoch_selection'] = 0  #noqa: ERA001
 settings["apply_beamformer"] = 0
 settings["channels_to_be_dropped_selected"] = 0
 settings["nr_ica_components"] = 0
@@ -75,9 +75,9 @@ settings["montage", ".edf_bio64"] = "biosemi64"
 settings["montage", ".edf_bio128"] = "biosemi128"
 settings["montage", ".edf_10-20"] = "standard_1020"
 settings["montage", ".edf_GSN-Hydrocel_64"] = "GSN-HydroCel-64_1.0"
-# settings['montage',".eeg"] = "n/a"
-# settings['montage',".fif"] = "n/a"
-# settings['montage',".cnt"] = "standard_1005"
+# settings['montage',".eeg"] = "n/a"  #noqa: ERA001
+# settings['montage',".fif"] = "n/a"  #noqa: ERA001
+# settings['montage',".cnt"] = "standard_1005"  #noqa: ERA001
 
 settings["input_file_pattern", ".txt_bio32"] = "*.txt"
 settings["input_file_pattern", ".txt_bio64"] = "*.txt"
