@@ -82,9 +82,7 @@ class MemoryMonitor:  # noqa: D101
     @staticmethod
     def check_memory():
         """Check if memory usage is too high."""
-        if MemoryMonitor.get_memory_usage() > MAX_MEMORY_PERCENT:
-            return True
-        return False
+        return MemoryMonitor.get_memory_usage() > MAX_MEMORY_PERCENT
 
     @staticmethod
     def check_concatenation_safety(data_size, num_epochs):
@@ -443,9 +441,7 @@ def create_gui():
         ],
     ]
 
-    window = sg.Window("EEG Analysis Tool", layout, background_color=MAIN_BG, finalize=True, margins=(0, 0))
-
-    return window
+    return sg.Window("EEG Analysis Tool", layout, background_color=MAIN_BG, finalize=True, margins=(0, 0))
 
 
 def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_name=None):
@@ -1194,9 +1190,8 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
             if used_channels[i]:
                 node_distances = 0
                 for j in range(n_total):
-                    if used_channels[j] and i != j:
-                        if i in paths and j in paths[i]:
-                            node_distances += paths[i][j]
+                    if used_channels[j] and i != j and i in paths and j in paths[i]:
+                        node_distances += paths[i][j]
                 sum_distances += node_distances
 
         measures["asp"] = sum_distances / (n_used * (n_used - 1)) if n_used > 1 else 0
@@ -1461,8 +1456,7 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
                     jpe_norm = entr / np.log(math.factorial(n) * math.factorial(n) - 2 * math.factorial(n))
                     JPE[ch, ind] = 1 - jpe_norm if invert else jpe_norm
 
-    JPE = JPE + JPE.T
-    return JPE
+    return JPE + JPE.T
 
 
 def parse_epoch_filename(filename):
@@ -2071,11 +2065,10 @@ def process_subject_condition(args):
         # First normalize averaged connectivity matrices
         n_epochs = len(epoch_files)
         for key in avg_matrices:
-            if avg_matrices[key] is not None:
+            if avg_matrices[key] is not None and not (concat_aecc and key == "aec"):
                 # Only normalize if not using concatenation or if this isn't an AEC matrix
-                if not (concat_aecc and key == "aec"):
-                    avg_matrices[key] /= n_epochs
-                    logger.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
+                avg_matrices[key] /= n_epochs
+                logger.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
 
         # Now calculate MSTs from averaged connectivity matrices if needed
         if save_mst:
@@ -2342,7 +2335,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
     has_broadband = False
 
     for conditions in grouped_files.values():
-        for condition in conditions.keys():
+        for condition in conditions():
             band = extract_freq_band(condition)
             if band != "unknown":
                 found_bands.add(band)

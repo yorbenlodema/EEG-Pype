@@ -103,10 +103,10 @@ layout = [
 ]
 
 
-def print_dict(dict):  # pprint and json.print do not work well with composite keys!
+def print_dict(_dict):  # pprint and json.print do not work well with composite keys!
     """Print dictionary."""
-    for key in dict.keys():
-        print(key, ":", dict[key])
+    for key, value in _dict.items():
+        print(key, ":", value)
 
 
 def write_config_file(config):
@@ -127,8 +127,7 @@ def write_config_file(config):
 def load_config(fn):
     """Read config file in .pkl format."""
     with open(fn, "rb") as f:
-        config = pickle.load(f)
-    return config
+        return pickle.load(f)
 
 
 def select_input_file_paths(config, settings):
@@ -449,7 +448,7 @@ def ask_average_ref(config):
         if event == "Yes":
             config["apply_average_ref"] = 1
             break
-        elif event == "No":
+        if event == "No":
             config["apply_average_ref"] = 0
             break
         if event in (sg.WIN_CLOSED, "Ok"):
@@ -485,7 +484,7 @@ def ask_ica_option(config):
             config["apply_ica"] = 1
             config = ask_nr_ica_components(config, settings)  # ask nr components
             break
-        elif event == "No":
+        if event == "No":
             config["apply_ica"] = 0
             break
         if event in (sg.WIN_CLOSED, "Ok"):
@@ -522,7 +521,7 @@ def ask_beamformer_option(config):
             config["apply_beamformer"] = 1
             config["apply_average_ref"] = 1  # prereq for beamformer
             break
-        elif event == "No":
+        if event == "No":
             config["apply_beamformer"] = 0
             break
         if event in (sg.WIN_CLOSED, "Ok"):
@@ -754,11 +753,7 @@ def show_channel_correction_window(raw, montage_name, settings):
         remaining_expected = [exp for exp in expected if exp not in used_expected]
 
         # Combine all rows
-        all_rows = (
-            matched_pairs + [[curr, ""] for curr in unmatched_current] + [["", exp] for exp in remaining_expected]
-        )
-
-        return all_rows
+        return matched_pairs + [[curr, ""] for curr in unmatched_current] + [["", exp] for exp in remaining_expected]
 
     def update_table_and_status():
         """Update the table and matching status."""
@@ -839,7 +834,7 @@ def show_channel_correction_window(raw, montage_name, settings):
             window.close()
             return None
 
-        elif event == "-REPLACE_ALL-":
+        if event == "-REPLACE_ALL-":
             find = values["-FIND-"]
             replace = values["-REPLACE-"]
             if find:  # Only replace if find string is not empty
@@ -847,15 +842,12 @@ def show_channel_correction_window(raw, montage_name, settings):
                 update_table_and_status()
 
         elif event == "-APPLY-":
-            if len(modified_channels) != len(expected_channels):
-                if not sg.popup_yes_no(
-                    "Warning: Number of channels doesn't match the expected montage. Continue anyway?"
-                ):
-                    continue
+            if len(modified_channels) != len(expected_channels) and not sg.popup_yes_no(
+                "Warning: Number of channels doesn't match the expected montage. Continue anyway?"
+            ):
+                continue
             window.close()
             return modified_channels
-
-    window.close()
 
 
 def ask_skip_input_file(config):
@@ -1106,8 +1098,7 @@ def set_file_output_related_names(config):
 def create_dict():
     """Create initial dict with starting values for processing."""
     try:
-        config = settings  # read defaults from settings file
-        return config
+        return settings  # read defaults from settings file
     except:
         sg.popup_error("Error create_dict: ", location=(100, 100), font=font)
         window.close()
@@ -1157,7 +1148,7 @@ def create_spatial_filter(raw_b, config):
         nfree=data_cov["nfree"],
     )
     # LCMV beamformer
-    spatial_filter = make_lcmv(
+    return make_lcmv(
         raw_b.info,
         fwd,
         data_cov,
@@ -1167,7 +1158,6 @@ def create_spatial_filter(raw_b, config):
         weight_norm="unit-noise-gain",
         rank=None,
     )
-    return spatial_filter
 
 
 def create_raw(config, montage, no_montage_files):
@@ -1495,8 +1485,7 @@ def perform_beamform(raw, config):
     msg = "channels left in raw_beamform:" + str(len(raw.ch_names))
     window["-RUN_INFO-"].update(msg + "\n", append=True)
     raw = perform_average_reference(raw)
-    spatial_filter = create_spatial_filter(raw, config)
-    return spatial_filter
+    return create_spatial_filter(raw, config)
 
 
 def perform_epoch_selection(raw, config, sfreq):
@@ -1831,9 +1820,7 @@ while True:  # @noloop remove
                 if config["apply_epoch_selection"]:
                     plot_power_spectrum(raw_temp, filtered=True)
 
-                if config["apply_epoch_selection"] and config["rerun"] == 0:
-                    config = perform_epoch_selection(raw_temp, config, temporary_sample_f)
-                elif config["apply_epoch_selection"] and rerun_no_previous_epoch_selection == 1:
+                if config["apply_epoch_selection"] and (config["rerun"] == 0 or rerun_no_previous_epoch_selection == 1):
                     config = perform_epoch_selection(raw_temp, config, temporary_sample_f)
 
                 # ********** Preparation of the final raw file and epochs for export **********
