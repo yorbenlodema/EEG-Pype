@@ -1308,13 +1308,13 @@ def create_raw(config, montage, no_montage_files):
                 ]
             elif config["channel_names_row"] is not None:
                 # Read channel names from header if specified
-                with open(file_path, "r") as file:
+                with open(file_path) as file:
                     for i in range(config["channel_names_row"] + 1):
                         header = file.readline().strip()
                     ch_names = header.split()
             else:
                 # Generate generic names if no header and not biosemi64
-                with open(file_path, "r") as file:
+                with open(file_path) as file:
                     first_line = file.readline().strip()
                     num_channels = len(first_line.split())
                     ch_names = [f"CH{i + 1}" for i in range(num_channels)]
@@ -2011,7 +2011,7 @@ while True:  # @noloop remove
             with open(fn, "a", encoding="UTF-8") as f:
                 f.write(traceback.format_exc())
                 f.write(window["-FILE_INFO-"].get())
-            with open(fn, "wt", encoding="UTF-8") as f:
+            with open(fn, "w", encoding="UTF-8") as f:
                 f.write(window["-RUN_INFO-"].get())
             sg.popup_error_with_traceback("Error - info: ", e)
 
@@ -2022,7 +2022,7 @@ while True:  # @noloop remove
         window["-FILE_INFO-"].update(msg + "\n", append=True)
         # write log file
         fn = config["logfile"]
-        with open(fn, "wt", encoding="UTF-8") as f:
+        with open(fn, "w", encoding="UTF-8") as f:
             f.write(window["-RUN_INFO-"].get())
         with open(fn, "a", encoding="UTF-8") as f:
             f.write(window["-FILE_INFO-"].get())

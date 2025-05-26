@@ -8,7 +8,7 @@ import time
 from collections import defaultdict
 from datetime import datetime
 from multiprocessing import Pool, cpu_count
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import mne
 import networkx as nx  # TODO: add to dependencies
@@ -539,10 +539,10 @@ def calculate_PSD(
     data: np.ndarray,
     fs: float,
     method: str = "multitaper",
-    freq_range: Optional[Tuple[float, float]] = None,
+    freq_range: Optional[tuple[float, float]] = None,
     compute_spectrogram: bool = False,
     **kwargs,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Calculate Power Spectral Density (PSD) using specified method.
 
@@ -648,7 +648,7 @@ def calculate_PSD(
 
 def _calculate_welch_psd(
     data: np.ndarray, fs: float, window_length_ms: float = 1000, overlap_percent: float = 50
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Calculate PSD using Welch's method.
 
@@ -702,7 +702,7 @@ def _calculate_welch_psd(
     return frequencies, psd
 
 
-def _calculate_fft_psd(data: np.ndarray, fs: float) -> Tuple[np.ndarray, np.ndarray]:
+def _calculate_fft_psd(data: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
     n_samples = data.shape[0]
     n_channels = data.shape[1]
 
