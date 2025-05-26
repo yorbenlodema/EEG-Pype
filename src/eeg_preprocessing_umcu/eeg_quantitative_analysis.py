@@ -22,7 +22,7 @@ from typing import Dict, Optional, Tuple
 import sys
 
 # Configuration
-FOLDER_EXTENSION = 'bdf'  # Change this to match your folder extension (e.g., 'bdf', 'edf', etc.)
+FOLDER_EXTENSION = "bdf"  # Change this to match your folder extension (e.g., 'bdf', 'edf', etc.)
 MAX_MEMORY_PERCENT = 70  # Maximum memory usage percentage
 
 # Be careful, option to change frequency bands (both those recognized in the epoch file names
@@ -63,16 +63,16 @@ def validate_frequency_bands():
         raise ValueError("FREQUENCY_BANDS dictionary is empty")
     
     for band_name, band_info in FREQUENCY_BANDS.items():
-        if 'pattern' not in band_info or 'range' not in band_info:
+        if "pattern" not in band_info or "range" not in band_info:
             raise ValueError(f"Band {band_name} missing required keys (pattern, range)")
         
-        fmin, fmax = band_info['range']
+        fmin, fmax = band_info["range"]
         if not (isinstance(fmin, (int, float)) and isinstance(fmax, (int, float))):
             raise ValueError(f"Band {band_name} range values must be numeric")
         if fmin >= fmax:
             raise ValueError(f"Band {band_name} minimum frequency must be less than maximum")
         
-        if not isinstance(band_info['pattern'], str):
+        if not isinstance(band_info["pattern"], str):
             raise ValueError(f"Band {band_name} pattern must be a string")
 
 BATCH_SIZE = 10  # Number of subjects to process in parallel
@@ -134,7 +134,7 @@ class MemoryMonitor:
 def setup_logging(folder_path):
     """Setup logging for the current analysis run"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = os.path.join(folder_path, f'eeg_analysis_{timestamp}.log')
+    log_filename = os.path.join(folder_path, f"eeg_analysis_{timestamp}.log")
     
     # Clear any existing handlers
     logging.getLogger().handlers = []
@@ -142,9 +142,9 @@ def setup_logging(folder_path):
     # Configure logging with both file and console output
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
+        format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler(log_filename, mode='w'),
+            logging.FileHandler(log_filename, mode="w"),
             logging.StreamHandler()
         ]
     )
@@ -158,32 +158,32 @@ def setup_logging(folder_path):
 def create_gui():
     suggested_threads = DEFAULT_THREADS
     
-    HEADER_BG = '#2C5784'
-    HEADER_TEXT = '#FFFFFF'
-    MAIN_BG = '#F0F2F6'
-    BUTTON_COLOR = ('#FFFFFF', '#2C5784')
+    HEADER_BG = "#2C5784"
+    HEADER_TEXT = "#FFFFFF"
+    MAIN_BG = "#F0F2F6"
+    BUTTON_COLOR = ("#FFFFFF", "#2C5784")
     
-    sg.theme('Default1')
-    sg.set_options(font=('Helvetica', 10))
+    sg.theme("Default1")
+    sg.set_options(font=("Helvetica", 10))
     
     header = [
-        [sg.Text("EEG Quantitative Analysis", font=('Helvetica', 20, 'bold'), 
+        [sg.Text("EEG Quantitative Analysis", font=("Helvetica", 20, "bold"), 
                 text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(10, 5))],
-        [sg.Text("Author: Yorben Lodema", font=('Helvetica', 10, 'italic'), 
+        [sg.Text("Author: Yorben Lodema", font=("Helvetica", 10, "italic"), 
                 text_color=HEADER_TEXT, background_color=HEADER_BG, pad=(10, 5))]
     ]
     
     # Column 1: Input Settings and Matrix Export
     left_column = [
-        [sg.Frame('Input Settings', [
-            [sg.Text("Select data folder:", font=('Helvetica', 11, 'bold'), background_color=MAIN_BG)],
+        [sg.Frame("Input Settings", [
+            [sg.Text("Select data folder:", font=("Helvetica", 11, "bold"), background_color=MAIN_BG)],
             [sg.Input(key="-FOLDER-", size=(25, 1)), sg.FolderBrowse(button_color=BUTTON_COLOR)],
             [sg.Text("Folder extension:", background_color=MAIN_BG), sg.Input(FOLDER_EXTENSION, key="-EXTENSION-", size=(8, 1))],
             [sg.Text("Processing threads:", background_color=MAIN_BG), sg.Input(suggested_threads, key="-THREADS-", size=(5, 1))],
             [sg.Checkbox("Epoch files have headers", key="-HAS_HEADERS-", default=True, background_color=MAIN_BG)],
         ], background_color=MAIN_BG)],
         
-        [sg.Frame('Matrix Export', [
+        [sg.Frame("Matrix Export", [
             [sg.Checkbox("Save connectivity matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG)],
             [sg.Text("Matrix folder:", background_color=MAIN_BG), 
              sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(15, 1))],
@@ -196,7 +196,7 @@ def create_gui():
     
     # Column 2: Complexity Measures
     middle_column = [
-        [sg.Frame('Complexity Measures', [
+        [sg.Frame("Complexity Measures", [
             [sg.Checkbox("Calculate JPE/PE", key="-CALC_JPE-", default=False, background_color=MAIN_BG)],
             [sg.Text("Time step (tau):", background_color=MAIN_BG), sg.Input("1", key="-JPE_ST-", size=(5, 1))],
             [sg.Checkbox("Convert to integers", key="-CONVERT_INTS_PE-", default=False, background_color=MAIN_BG)],
@@ -211,11 +211,11 @@ def create_gui():
     
     # Column 3: Spectral Analysis and Connectivity
     right_column = [
-        [sg.Frame('Spectral Analysis', [
+        [sg.Frame("Spectral Analysis", [
             [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
             [sg.Text("PSD Method:", background_color=MAIN_BG),
-             sg.Combo(['Multitaper', 'Welch', 'FFT'], default_value='Multitaper', key="-PSD_METHOD-", size=(10, 1))],
-            [sg.Text("Welch parameters (only used if Welch method selected):", background_color=MAIN_BG, font=('Helvetica', 9, 'italic'))],
+             sg.Combo(["Multitaper", "Welch", "FFT"], default_value="Multitaper", key="-PSD_METHOD-", size=(10, 1))],
+            [sg.Text("Welch parameters (only used if Welch method selected):", background_color=MAIN_BG, font=("Helvetica", 9, "italic"))],
             [sg.Text("Welch window (ms):", background_color=MAIN_BG), sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1))],
             [sg.Text("Welch overlap (%):", background_color=MAIN_BG), sg.Input("50", key="-WELCH_OVERLAP-", size=(6, 1))],
             [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
@@ -228,7 +228,7 @@ def create_gui():
             [sg.Text("Window (ms):", background_color=MAIN_BG), sg.Input("2000", key="-SV_WINDOW-", size=(6, 1))],
         ], background_color=MAIN_BG)],
                 
-        [sg.Frame('Connectivity', [
+        [sg.Frame("Connectivity", [
             [sg.Checkbox("Calculate PLI", key="-CALC_PLI-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate PLI MST measures", key="-CALC_PLI_MST-", default=False, background_color=MAIN_BG)],
             [sg.Checkbox("Calculate AEC", key="-CALC_AEC-", default=False, background_color=MAIN_BG)],
@@ -240,16 +240,16 @@ def create_gui():
     ]
     
     progress_section = [
-        [sg.Frame('Progress', [
-            [sg.Multiline(size=(70, 6), key='-LOG-', autoscroll=True, reroute_stdout=True,
-                         disabled=True, background_color='#FFFFFF', text_color='#000000')],
-            [sg.ProgressBar(100, orientation='h', size=(60, 20), key='-PROGRESS-',
+        [sg.Frame("Progress", [
+            [sg.Multiline(size=(70, 6), key="-LOG-", autoscroll=True, reroute_stdout=True,
+                         disabled=True, background_color="#FFFFFF", text_color="#000000")],
+            [sg.ProgressBar(100, orientation="h", size=(60, 20), key="-PROGRESS-",
                           bar_color=(HEADER_BG, MAIN_BG))],
             [sg.Column([[sg.Button("Process", size=(10, 1), button_color=BUTTON_COLOR, 
-                                 font=('Helvetica', 11, 'bold')),
-                        sg.Button("Exit", size=(8, 1), button_color=(HEADER_TEXT, '#AB4F4F'),
-                                font=('Helvetica', 11))]], 
-                      justification='center', expand_x=True, pad=(0, 5), background_color=MAIN_BG)],
+                                 font=("Helvetica", 11, "bold")),
+                        sg.Button("Exit", size=(8, 1), button_color=(HEADER_TEXT, "#AB4F4F"),
+                                font=("Helvetica", 11))]], 
+                      justification="center", expand_x=True, pad=(0, 5), background_color=MAIN_BG)],
         ], background_color=MAIN_BG)],
     ]
     
@@ -274,15 +274,15 @@ def create_gui():
 def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_name=None):
     """Create folder structure with subject subfolders"""
     folders = {
-        'jpe': os.path.join(base_folder, matrix_folder_name, 'jpe'),
-        'pli': os.path.join(base_folder, matrix_folder_name, 'pli'),
-        'aec': os.path.join(base_folder, matrix_folder_name, 'aec')
+        "jpe": os.path.join(base_folder, matrix_folder_name, "jpe"),
+        "pli": os.path.join(base_folder, matrix_folder_name, "pli"),
+        "aec": os.path.join(base_folder, matrix_folder_name, "aec")
     }
     
     if mst_folder_name:
         folders.update({
-            'pli_mst': os.path.join(base_folder, mst_folder_name, 'pli_mst'),
-            'aec_mst': os.path.join(base_folder, mst_folder_name, 'aec_mst')
+            "pli_mst": os.path.join(base_folder, mst_folder_name, "pli_mst"),
+            "aec_mst": os.path.join(base_folder, mst_folder_name, "aec_mst")
         })
     
     # Create base folders
@@ -309,15 +309,15 @@ def extract_freq_band(condition):
         or "unknown" if no match is found.
     """
     for band_name, band_info in FREQUENCY_BANDS.items():
-        pattern = band_info['pattern']
+        pattern = band_info["pattern"]
         # Add Hz to pattern if not already included
-        if not pattern.endswith('Hz'):
+        if not pattern.endswith("Hz"):
             search_pattern = f"{pattern}(\s*Hz)?"
         else:
             search_pattern = pattern
         if re.search(search_pattern, condition, re.IGNORECASE):
             return band_name
-    return 'unknown'
+    return "unknown"
 
 def is_broadband_condition(condition):
     """
@@ -328,9 +328,9 @@ def is_broadband_condition(condition):
     bool
         True if condition matches broadband pattern, False otherwise
     """
-    if 'broadband' not in FREQUENCY_BANDS:
+    if "broadband" not in FREQUENCY_BANDS:
         return False
-    pattern = FREQUENCY_BANDS['broadband']['pattern']
+    pattern = FREQUENCY_BANDS["broadband"]["pattern"]
     return bool(re.search(pattern, condition, re.IGNORECASE))
 
 
@@ -355,11 +355,11 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
 def linear_detrend(data):
     """Apply linear detrending to each channel"""
 
-    return signal.detrend(data, axis=0, type='linear')
+    return signal.detrend(data, axis=0, type="linear")
 
 def calculate_PSD(data: np.ndarray,
                  fs: float,
-                 method: str = 'multitaper',
+                 method: str = "multitaper",
                  freq_range: Optional[Tuple[float, float]] = None,
                  compute_spectrogram: bool = False,
                  **kwargs) -> Dict[str, np.ndarray]:
@@ -398,7 +398,7 @@ def calculate_PSD(data: np.ndarray,
             'spectrogram' : np.ndarray, optional
                 Time-frequency representation (only if compute_spectrogram=True)
     """
-    if method not in ['multitaper', 'welch', 'fft']:
+    if method not in ["multitaper", "welch", "fft"]:
         raise ValueError(f"Unknown method: {method}")
         
     # Input validation
@@ -413,20 +413,20 @@ def calculate_PSD(data: np.ndarray,
     result = {}
     
     # Calculate PSD based on method
-    if method == 'multitaper':
+    if method == "multitaper":
         try:
             frequencies, psd = _calculate_multitaper_psd(data, fs)
-            result['frequencies'] = frequencies
-            result['psd'] = psd
+            result["frequencies"] = frequencies
+            result["psd"] = psd
             
         except Exception as e:
             logging.error(f"Error calculating multitaper PSD: {str(e)}")
             raise
             
-    elif method == 'welch':
+    elif method == "welch":
         try:
-            window_length_ms = kwargs.get('window_length_ms', 1000)  # Default 1000ms
-            overlap_percent = kwargs.get('overlap_percent', 50)  # Default 50%
+            window_length_ms = kwargs.get("window_length_ms", 1000)  # Default 1000ms
+            overlap_percent = kwargs.get("overlap_percent", 50)  # Default 50%
             
             frequencies, psd = _calculate_welch_psd(
                 data, 
@@ -434,18 +434,18 @@ def calculate_PSD(data: np.ndarray,
                 window_length_ms=window_length_ms,
                 overlap_percent=overlap_percent
             )
-            result['frequencies'] = frequencies
-            result['psd'] = psd
+            result["frequencies"] = frequencies
+            result["psd"] = psd
             
         except Exception as e:
             logging.error(f"Error calculating Welch PSD: {str(e)}")
             raise
             
-    elif method == 'fft':
+    elif method == "fft":
         try:
             frequencies, psd = _calculate_fft_psd(data, fs)
-            result['frequencies'] = frequencies
-            result['psd'] = psd
+            result["frequencies"] = frequencies
+            result["psd"] = psd
             
         except Exception as e:
             logging.error(f"Error calculating FFT PSD: {str(e)}")
@@ -457,9 +457,9 @@ def calculate_PSD(data: np.ndarray,
         if not (0 <= fmin < fmax <= fs/2):
             raise ValueError(f"Invalid frequency range: {freq_range}")
         
-        freq_mask = (result['frequencies'] >= fmin) & (result['frequencies'] <= fmax)
-        result['frequencies'] = result['frequencies'][freq_mask]
-        result['psd'] = result['psd'][freq_mask]
+        freq_mask = (result["frequencies"] >= fmin) & (result["frequencies"] <= fmax)
+        result["frequencies"] = result["frequencies"][freq_mask]
+        result["psd"] = result["psd"][freq_mask]
     
     return result
 
@@ -503,7 +503,7 @@ def _calculate_welch_psd(data: np.ndarray,
                                        nperseg=nperseg,
                                        noverlap=noverlap,
                                        detrend=False,
-                                       scaling='density')
+                                       scaling="density")
     
     # Initialize PSD array with correct dimensions
     psd = np.zeros((len(frequencies), n_channels))
@@ -516,7 +516,7 @@ def _calculate_welch_psd(data: np.ndarray,
                                    nperseg=nperseg,
                                    noverlap=noverlap,
                                    detrend=False, # already done when loading data
-                                   scaling='density')
+                                   scaling="density")
     
     return frequencies, psd
 
@@ -711,8 +711,8 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                     fs=fs,
                     nperseg=samples_per_window,
                     noverlap=samples_per_window // 2,
-                    detrend='constant',
-                    window='hann'
+                    detrend="constant",
+                    window="hann"
                 )
 
                 # Create mask for broadband total power
@@ -740,7 +740,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                     band_power = np.sum(Sxx[band_mask, :], axis=0)  # shape: (time_windows,)
 
                     # Compute relative power time series
-                    with np.errstate(divide='ignore', invalid='ignore'):
+                    with np.errstate(divide="ignore", invalid="ignore"):
                         relative_power = np.where(
                             total_power > 0, band_power / total_power, 0
                         )
@@ -767,7 +767,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
 
 def smooth_spectrum(frequencies, power_spectrum, smoothing_window=5):
     """Apply moving average smoothing to power spectrum"""
-    return np.convolve(power_spectrum, np.ones(smoothing_window)/smoothing_window, mode='same')
+    return np.convolve(power_spectrum, np.ones(smoothing_window)/smoothing_window, mode="same")
 
 def find_peaks(x, y, threshold_ratio=0.5):
     """Find significant peaks using relative maxima and prominence threshold"""
@@ -887,7 +887,7 @@ def calculate_power_bands(frequencies, psd):
         abs_power = np.sum(psd[band_mask, :], axis=0)
 
         # Compute relative power
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             # For broadband, relative power is 1.0 by definition
             if band_name.lower() == "broadband":
                 rel_power = np.ones_like(abs_power)
@@ -949,45 +949,45 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
             degrees[edge[0]] += 1.0/norm_factor  # norm_factor is (M-1)
             degrees[edge[1]] += 1.0/norm_factor
         
-        measures['degree'] = max(degrees.values()) if degrees else 0
+        measures["degree"] = max(degrees.values()) if degrees else 0
 
         # 2. Eccentricity - normalize by (M-1)
         eccentricity = nx.eccentricity(G)
         normalized_eccentricity = {node: ecc/norm_factor 
                                  for node, ecc in eccentricity.items() 
                                  if used_channels[node]}
-        measures['eccentr'] = np.mean(list(normalized_eccentricity.values()))
+        measures["eccentr"] = np.mean(list(normalized_eccentricity.values()))
         
         # 3. Betweenness centrality
         betweenness = nx.betweenness_centrality(G)
-        measures['betweenness'] = max(list(betweenness.values()))
+        measures["betweenness"] = max(list(betweenness.values()))
         
         # 4. Diameter - normalize by (M-1)
         raw_diameter = nx.diameter(G)
-        measures['diameter'] = raw_diameter / norm_factor
+        measures["diameter"] = raw_diameter / norm_factor
         
         # 5. Leaf fraction        
         leaf_nodes = sum(1 for node, deg in degrees.items() 
                         if abs(deg - 1.0/norm_factor) < 1e-10)
-        measures['leaf'] = leaf_nodes / n_used
+        measures["leaf"] = leaf_nodes / n_used
         
         max_betweenness = max(betweenness.values()) if betweenness else 0
         if max_betweenness > 0:
-            measures['hierarchy'] = leaf_nodes / (2 * max_betweenness * norm_factor)
+            measures["hierarchy"] = leaf_nodes / (2 * max_betweenness * norm_factor)
         else:
-            measures['hierarchy'] = 0
+            measures["hierarchy"] = 0
         
         # 6. Kappa (degree divergence)
         sum_x = sum((n_total-1) * deg for node, deg in degrees.items() if used_channels[node])
         sum_x2 = sum(((n_total-1) * deg)**2 for node, deg in degrees.items() if used_channels[node])
-        measures['kappa'] = sum_x2 / sum_x if sum_x > 0 else 0
+        measures["kappa"] = sum_x2 / sum_x if sum_x > 0 else 0
         
         # 7. Tree hierarchy
         max_betweenness = max(betweenness.values()) if betweenness else 0
         if max_betweenness > 0:
-            measures['hierarchy'] = leaf_nodes / (2 * max_betweenness * norm_factor)
+            measures["hierarchy"] = leaf_nodes / (2 * max_betweenness * norm_factor)
         else:
-            measures['hierarchy'] = 0
+            measures["hierarchy"] = 0
         
         # 8. Average shortest path (ASP)
         paths = dict(nx.all_pairs_shortest_path_length(G))
@@ -1001,11 +1001,11 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
                             node_distances += paths[i][j]
                 sum_distances += node_distances
         
-        measures['asp'] = sum_distances / (n_used * (n_used - 1)) if n_used > 1 else 0
+        measures["asp"] = sum_distances / (n_used * (n_used - 1)) if n_used > 1 else 0
         
         # 9. Tree efficiency (Teff)
         normalized_diam = raw_diameter / norm_factor
-        measures['teff'] = 1.0 - (normalized_diam * (n_used-1)) / (n_used - (n_used-1)*measures['leaf'] + 1.0)
+        measures["teff"] = 1.0 - (normalized_diam * (n_used-1)) / (n_used - (n_used-1)*measures["leaf"] + 1.0)
         
         # 10. R (degree correlation)
         degree_pairs = []
@@ -1026,20 +1026,20 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
             var_j = np.mean((deg_j - mean_j) ** 2)
             
             if var_i * var_j > 0:
-                measures['r'] = cov / np.sqrt(var_i * var_j)
+                measures["r"] = cov / np.sqrt(var_i * var_j)
             else:
-                measures['r'] = 0
+                measures["r"] = 0
         else:
-            measures['r'] = 0
+            measures["r"] = 0
         
         # 11. Mean edge weight
-        edge_weights = [abs(d.get('weight', 1.0)) for _, _, d in G.edges(data=True)]
-        measures['mean'] = np.mean(edge_weights) if edge_weights else 0
+        edge_weights = [abs(d.get("weight", 1.0)) for _, _, d in G.edges(data=True)]
+        measures["mean"] = np.mean(edge_weights) if edge_weights else 0
         
         # 12. Reference value
         mst_sum = np.sum(abs(mst_matrix[used_channels][:, used_channels]))
         orig_sum = np.sum(connectivity_matrix[used_channels][:, used_channels])
-        measures['ref'] = mst_sum / orig_sum if orig_sum > 0 else 0
+        measures["ref"] = mst_sum / orig_sum if orig_sum > 0 else 0
         
         return measures, mst_matrix, True
         
@@ -1260,19 +1260,19 @@ def parse_epoch_filename(filename):
     Alternative: 41_Source_level_broadband_Epoch1.txt
     """
     # Extract the base name (everything before first underscore)
-    base_name = filename.split('_')[0]
+    base_name = filename.split("_")[0]
     
     # Extract level type (Source or Sensor)
-    level_match = re.search(r'(Source|Sensor)_level', filename)
+    level_match = re.search(r"(Source|Sensor)_level", filename)
     level_type = level_match.group(1).lower() if level_match else "unknown"
     
     # Extract frequency band - try numerical range first
-    freq_match = re.search(r'(\d+\.?\d*-\d+\.?\d*)\s*Hz', filename)
+    freq_match = re.search(r"(\d+\.?\d*-\d+\.?\d*)\s*Hz", filename)
     if freq_match:
         freq_band = freq_match.group(1)
     else:
         # Try to extract broadband text
-        parts = filename.split('_')
+        parts = filename.split("_")
         for i, part in enumerate(parts):
             if part.lower() == "level" and i+1 < len(parts):
                 freq_band = parts[i+1]
@@ -1281,10 +1281,10 @@ def parse_epoch_filename(filename):
             freq_band = "unknown"
     
     return {
-        'base_name': base_name,
-        'level_type': level_type,
-        'freq_band': freq_band,
-        'condition': f"{level_type}_{freq_band}"
+        "base_name": base_name,
+        "level_type": level_type,
+        "freq_band": freq_band,
+        "condition": f"{level_type}_{freq_band}"
     }
                     
 def process_subject_condition(args):
@@ -1315,9 +1315,9 @@ def process_subject_condition(args):
 
         # Initialize matrices for connectivity
         avg_matrices = {
-            'jpe': None,
-            'pli': None,
-            'aec': None,
+            "jpe": None,
+            "pli": None,
+            "aec": None,
         }
         
         logging.info(f"Processing {subject} - {condition} ({len(epoch_files)} epochs)")
@@ -1330,13 +1330,13 @@ def process_subject_condition(args):
             try:
                 # Read data file
                 if has_headers:
-                    data = pd.read_csv(file_path, sep=None, engine='python')
+                    data = pd.read_csv(file_path, sep=None, engine="python")
                     if channel_names is None:
                         channel_names = data.columns.tolist()
                         logging.info(f"{subject} - {condition}: Found {len(channel_names)} channels from headers")
                 else:
                     # First read the first row to check if it's non-numerical
-                    first_row = pd.read_csv(file_path, sep=None, engine='python', header=None, nrows=1)
+                    first_row = pd.read_csv(file_path, sep=None, engine="python", header=None, nrows=1)
                     is_header = False
                     
                     try:
@@ -1345,11 +1345,11 @@ def process_subject_condition(args):
                         is_header = True
                         logging.info(f"Found non-numeric header in {os.path.basename(file_path)}, ignoring first row")
                     
-                    data = pd.read_csv(file_path, sep=None, engine='python', header=None, 
+                    data = pd.read_csv(file_path, sep=None, engine="python", header=None, 
                                      skiprows=1 if is_header else 0)
                     
                     for col in data.columns:
-                        data[col] = pd.to_numeric(data[col], errors='coerce')
+                        data[col] = pd.to_numeric(data[col], errors="coerce")
                     
                     if channel_names is None:
                         n_columns = len(data.columns)
@@ -1381,10 +1381,10 @@ def process_subject_condition(args):
                     try:
                         # Prepare PSD calculation parameters
                         psd_kwargs = {}
-                        if psd_method == 'welch':
+                        if psd_method == "welch":
                             psd_kwargs.update({
-                                'window_length_ms': welch_window_ms,
-                                'overlap_percent': welch_overlap
+                                "window_length_ms": welch_window_ms,
+                                "overlap_percent": welch_overlap
                             })
                         
                         # Calculate PSDs with appropriate settings
@@ -1402,8 +1402,8 @@ def process_subject_condition(args):
                             try:
                                 logging.info(f"Starting power calculation for {subject} - {condition}, epoch {i+1}")
                                 powers, channel_powers = calculate_power_bands(
-                                    frequencies=spectral_data['frequencies'],
-                                    psd=spectral_data['psd']
+                                    frequencies=spectral_data["frequencies"],
+                                    psd=spectral_data["psd"]
                                 )
                                 
                                 # Store whole-brain averages
@@ -1415,40 +1415,40 @@ def process_subject_condition(args):
                                 if save_channel_averages:
                                     for band_name in FREQUENCY_BANDS:
                                         for ch in range(len(channel_names)):
-                                            channel_results[channel_names[ch]][f'{band_name}_abs_power'].append(
-                                                channel_powers[f'{band_name}_abs_power'][ch]
+                                            channel_results[channel_names[ch]][f"{band_name}_abs_power"].append(
+                                                channel_powers[f"{band_name}_abs_power"][ch]
                                             )
-                                            channel_results[channel_names[ch]][f'{band_name}_rel_power'].append(
-                                                channel_powers[f'{band_name}_rel_power'][ch]
+                                            channel_results[channel_names[ch]][f"{band_name}_rel_power"].append(
+                                                channel_powers[f"{band_name}_rel_power"][ch]
                                             )
                                             
                             except Exception as e:
                                 logging.error(f"Error calculating power measures for epoch {i+1}: {str(e)}")
                                 for band_name in FREQUENCY_BANDS:
-                                    power_values[f'{band_name}_abs_power'].append(np.nan)
-                                    power_values[f'{band_name}_rel_power'].append(np.nan)
+                                    power_values[f"{band_name}_abs_power"].append(np.nan)
+                                    power_values[f"{band_name}_rel_power"].append(np.nan)
                         
                         # Calculate peak frequency if requested
                         if calc_peak:
                             try:
                                 peak_freqs = calculate_avg_peak_frequency(
-                                    frequencies=spectral_data['frequencies'],
-                                    psd=spectral_data['psd'],
+                                    frequencies=spectral_data["frequencies"],
+                                    psd=spectral_data["psd"],
                                     freq_range=(peak_min, peak_max)
                                 )
                                 
                                 if save_channel_averages:
                                     for ch in range(len(channel_names)):
-                                        channel_results[channel_names[ch]]['peak_frequency'].append(peak_freqs[ch])
+                                        channel_results[channel_names[ch]]["peak_frequency"].append(peak_freqs[ch])
                                 
                                 n_channels_without_peak = np.sum(np.isnan(peak_freqs))
-                                power_values['peak_frequency'].append(np.nanmean(peak_freqs))
-                                power_values['channels_without_peak'].append(n_channels_without_peak)
+                                power_values["peak_frequency"].append(np.nanmean(peak_freqs))
+                                power_values["channels_without_peak"].append(n_channels_without_peak)
                                 
                             except Exception as e:
                                 logging.error(f"Error calculating peak frequency: {str(e)}")
-                                power_values['peak_frequency'].append(np.nan)
-                                power_values['channels_without_peak'].append(np.nan)
+                                power_values["peak_frequency"].append(np.nan)
+                                power_values["channels_without_peak"].append(np.nan)
                         
                         # Calculate spectral variability if requested
                         if calc_sv:
@@ -1456,7 +1456,7 @@ def process_subject_condition(args):
                                 # First load one epoch to check memory requirements
                                 if epoch_files:
                                     try:
-                                        test_data = pd.read_csv(epoch_files[0], sep=None, engine='python', 
+                                        test_data = pd.read_csv(epoch_files[0], sep=None, engine="python", 
                                                               header=0 if has_headers else None).values
                                         if not MemoryMonitor.check_concatenation_safety(test_data.nbytes, len(epoch_files)):
                                             raise MemoryError("Insufficient memory for safe concatenation of SV epochs")
@@ -1473,9 +1473,9 @@ def process_subject_condition(args):
                                 for file_path in epoch_files:
                                     try:
                                         if has_headers:
-                                            data = pd.read_csv(file_path, sep=None, engine='python')
+                                            data = pd.read_csv(file_path, sep=None, engine="python")
                                         else:
-                                            data = pd.read_csv(file_path, sep=None, engine='python', header=None)
+                                            data = pd.read_csv(file_path, sep=None, engine="python", header=None)
                                         
                                         epoch_data = data.values
 
@@ -1509,32 +1509,32 @@ def process_subject_condition(args):
                                         if sv_results:
                                             if save_channel_averages:
                                                 for band_name, values in sv_results.items():
-                                                    band_key = f'sv_{band_name}'
+                                                    band_key = f"sv_{band_name}"
                                                     for ch in range(len(channel_names)):
                                                         channel_results[channel_names[ch]][band_key] = values[ch]
                                             
                                             # Store single values for each band
                                             for band_name, values in sv_results.items():
-                                                band_key = f'sv_{band_name}'
+                                                band_key = f"sv_{band_name}"
                                                 sv_values[band_key] = np.nanmean(values)
                                         
                                     except Exception as e:
                                         logging.error(f"Error calculating spectral variability on concatenated data: {str(e)}")
                                         for band_name in FREQUENCY_BANDS:
-                                            sv_values[f'sv_{band_name}'] = np.nan
+                                            sv_values[f"sv_{band_name}"] = np.nan
                                 else:
                                     logging.error("No valid epochs could be processed for spectral variability")
                                     for band_name in FREQUENCY_BANDS:
-                                        sv_values[f'sv_{band_name}'] = np.nan
+                                        sv_values[f"sv_{band_name}"] = np.nan
                                         
                             except Exception as e:
                                 logging.error(f"Error in spectral variability processing: {str(e)}")
                                 for band_name in FREQUENCY_BANDS:
-                                    sv_values[f'sv_{band_name}'] = np.nan
+                                    sv_values[f"sv_{band_name}"] = np.nan
                             
                             finally:
                                 # Clean up interim data
-                                if 'all_data_sv' in locals():
+                                if "all_data_sv" in locals():
                                     del all_data_sv
                         
                         # Clean up spectral data
@@ -1545,14 +1545,14 @@ def process_subject_condition(args):
                         # Set all spectral measures to NaN
                         if calc_power:
                             for band_name in FREQUENCY_BANDS:
-                                power_values[f'{band_name}_abs_power'].append(np.nan)
-                                power_values[f'{band_name}_rel_power'].append(np.nan)
+                                power_values[f"{band_name}_abs_power"].append(np.nan)
+                                power_values[f"{band_name}_rel_power"].append(np.nan)
                         if calc_peak:
-                            power_values['peak_frequency'].append(np.nan)
-                            power_values['channels_without_peak'].append(np.nan)
+                            power_values["peak_frequency"].append(np.nan)
+                            power_values["channels_without_peak"].append(np.nan)
                         if calc_sv:
                             for band_name in FREQUENCY_BANDS:
-                                sv_values[f'sv_{band_name}'] = np.nan
+                                sv_values[f"sv_{band_name}"] = np.nan
                 
                 # Calculate JPE and PE
                 if calc_jpe:
@@ -1563,10 +1563,10 @@ def process_subject_condition(args):
                     
                     jpe_matrix = calculate_jpe(data_values_pe, n=4, st=jpe_st, invert=invert)
                     if save_matrices:
-                        if avg_matrices['jpe'] is None:
-                            avg_matrices['jpe'] = jpe_matrix
+                        if avg_matrices["jpe"] is None:
+                            avg_matrices["jpe"] = jpe_matrix
                         else:
-                            avg_matrices['jpe'] += jpe_matrix
+                            avg_matrices["jpe"] += jpe_matrix
                     
                     mask = ~np.eye(jpe_matrix.shape[0], dtype=bool)
                     jpe_values.append(jpe_matrix[mask].mean())
@@ -1576,11 +1576,11 @@ def process_subject_condition(args):
                     
                     if save_channel_averages:
                         for ch in range(len(channel_names)):
-                            channel_results[channel_names[ch]]['pe'].append(pe_values_array[ch])
+                            channel_results[channel_names[ch]]["pe"].append(pe_values_array[ch])
                             channel_jpe = np.mean(jpe_matrix, axis=1)
-                            channel_results[channel_names[ch]]['jpe'].append(channel_jpe[ch])
+                            channel_results[channel_names[ch]]["jpe"].append(channel_jpe[ch])
                     
-                    if 'data_values_pe' in locals(): 
+                    if "data_values_pe" in locals(): 
                         del data_values_pe
                 
                 # Calculate PLI if requested
@@ -1588,10 +1588,10 @@ def process_subject_condition(args):
                     try:
                         pli_matrix = calculate_pli(data_values)
                         if save_matrices or (save_mst and calc_pli_mst):
-                            if avg_matrices['pli'] is None:
-                                avg_matrices['pli'] = pli_matrix
+                            if avg_matrices["pli"] is None:
+                                avg_matrices["pli"] = pli_matrix
                             else:
-                                avg_matrices['pli'] += pli_matrix
+                                avg_matrices["pli"] += pli_matrix
                                 
                         mask = ~np.eye(pli_matrix.shape[0], dtype=bool)
                         pli_values.append(pli_matrix[mask].mean())
@@ -1599,7 +1599,7 @@ def process_subject_condition(args):
                         if save_channel_averages:
                             channel_pli = np.mean(pli_matrix, axis=1)
                             for ch in range(len(channel_names)):
-                                channel_results[channel_names[ch]]['pli'].append(channel_pli[ch])
+                                channel_results[channel_names[ch]]["pli"].append(channel_pli[ch])
                         
                         if calc_pli_mst:
                             try:
@@ -1609,9 +1609,9 @@ def process_subject_condition(args):
                                         pli_mst_values[measure].append(value)
                             except Exception as e:
                                 logging.error(f"Error calculating PLI MST measures for epoch {i+1}: {str(e)}")
-                                for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                              'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                              'ref', 'mean']:
+                                for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                                              "diameter", "leaf", "hierarchy", "teff", "asp", 
+                                              "ref", "mean"]:
                                     pli_mst_values[measure].append(np.nan)
                                                 
                     except Exception as e:
@@ -1631,7 +1631,7 @@ def process_subject_condition(args):
                                 # Read and store all epochs with offset correction
                                 for file_path in epoch_files:
                                     try:
-                                        data = pd.read_csv(file_path, sep=None, engine='python')
+                                        data = pd.read_csv(file_path, sep=None, engine="python")
                                         epoch_data = data.values
 
                                         all_data.append(epoch_data)
@@ -1654,7 +1654,7 @@ def process_subject_condition(args):
                             aec_matrix = calculate_aecc(data_values, orthogonalize=use_aecc, force_positive=force_positive)
                     
                             if save_matrices:
-                                avg_matrices['aec'] = aec_matrix
+                                avg_matrices["aec"] = aec_matrix
                             
                             mask = ~np.eye(aec_matrix.shape[0], dtype=bool)
                             aec_values = [aec_matrix[mask].mean()]  # Single value
@@ -1671,15 +1671,15 @@ def process_subject_condition(args):
                                         mst_results = (mst_measures, mst_matrix, success)  # Store for later use
                                         
                                         # Store single values for MST measures
-                                        for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                                      'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                                      'ref', 'mean']:
+                                        for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                                                      "diameter", "leaf", "hierarchy", "teff", "asp", 
+                                                      "ref", "mean"]:
                                             aec_mst_values[measure] = [mst_measures[measure]]
                                         
                                         # Store MST matrix if needed
                                         if save_mst:
                                             mst_matrix_symmetric = mst_matrix + mst_matrix.T
-                                            avg_matrices['aec_mst'] = mst_matrix_symmetric
+                                            avg_matrices["aec_mst"] = mst_matrix_symmetric
                                             logging.info(f"Stored MST matrix for concatenated data")
                                     else:
                                         successful_mst_epochs = 0
@@ -1693,20 +1693,20 @@ def process_subject_condition(args):
                                 for ch in range(len(channel_names)):
                                     ch_name = channel_names[ch]
                                     # Initialize list if needed
-                                    if 'aec' not in channel_results[ch_name]:
-                                        channel_results[ch_name]['aec'] = []
+                                    if "aec" not in channel_results[ch_name]:
+                                        channel_results[ch_name]["aec"] = []
                                     # Always append to list (even for concatenated case)
-                                    channel_results[ch_name]['aec'].append(channel_aec[ch])
+                                    channel_results[ch_name]["aec"].append(channel_aec[ch])
                                 logging.info(f"Added AEC channel data for concatenated processing")
                     
                         else:
                             # Original epoch-by-epoch processing (keep existing code)
                             aec_matrix = calculate_aecc(data_values, orthogonalize=use_aecc, force_positive=force_positive)
                             if save_matrices or (save_mst and calc_aec_mst):
-                                if avg_matrices['aec'] is None:
-                                    avg_matrices['aec'] = aec_matrix
+                                if avg_matrices["aec"] is None:
+                                    avg_matrices["aec"] = aec_matrix
                                 else:
-                                    avg_matrices['aec'] += aec_matrix
+                                    avg_matrices["aec"] += aec_matrix
                                     
                             mask = ~np.eye(aec_matrix.shape[0], dtype=bool)
                             aec_values.append(aec_matrix[mask].mean())
@@ -1721,9 +1721,9 @@ def process_subject_condition(args):
                                         successful_mst_epochs += 1
                                 except Exception as e:
                                     logging.error(f"Error calculating MST measures for epoch: {str(e)}")
-                                    for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                                                  'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                                                  'ref', 'mean']:
+                                    for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                                                  "diameter", "leaf", "hierarchy", "teff", "asp", 
+                                                  "ref", "mean"]:
                                         aec_mst_values[measure].append(np.nan)
                             
                             if save_channel_averages:
@@ -1731,10 +1731,10 @@ def process_subject_condition(args):
                                 for ch in range(len(channel_names)):
                                     ch_name = channel_names[ch]
                                     # Initialize list if needed
-                                    if 'aec' not in channel_results[ch_name]:
-                                        channel_results[ch_name]['aec'] = []
+                                    if "aec" not in channel_results[ch_name]:
+                                        channel_results[ch_name]["aec"] = []
                                     # Always append to list
-                                    channel_results[ch_name]['aec'].append(channel_aec[ch])
+                                    channel_results[ch_name]["aec"].append(channel_aec[ch])
                     
                     except Exception as e:
                         logging.error(f"Error calculating AEC{'c' if use_aecc else ''}: {str(e)}")
@@ -1747,7 +1747,7 @@ def process_subject_condition(args):
                         
                         if save_channel_averages:
                             for ch in range(len(channel_names)):
-                                channel_results[channel_names[ch]]['sampen'].append(sampen_values_ch[ch])
+                                channel_results[channel_names[ch]]["sampen"].append(sampen_values_ch[ch])
                         
                         sampen_values.append(np.nanmean(sampen_values_ch))  # Value per epoch
                         logging.info(f"Successfully calculated SampEn for epoch")
@@ -1761,7 +1761,7 @@ def process_subject_condition(args):
                         
                         if save_channel_averages:
                             for ch in range(len(channel_names)):
-                                channel_results[channel_names[ch]]['apen'].append(apen_values_ch[ch])
+                                channel_results[channel_names[ch]]["apen"].append(apen_values_ch[ch])
                         
                         apen_values.append(np.nanmean(apen_values_ch))  # Value per epoch
                         logging.info(f"Successfully calculated ApEn for epoch")
@@ -1787,19 +1787,19 @@ def process_subject_condition(args):
         for key in avg_matrices:
             if avg_matrices[key] is not None:
                 # Only normalize if not using concatenation or if this isn't an AEC matrix
-                if not (concat_aecc and key == 'aec'):
+                if not (concat_aecc and key == "aec"):
                     avg_matrices[key] /= n_epochs
                     logging.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
             
         # Now calculate MSTs from averaged connectivity matrices if needed                    
         if save_mst:
             # Handle PLI MST
-            if calc_pli_mst and avg_matrices['pli'] is not None:
+            if calc_pli_mst and avg_matrices["pli"] is not None:
                 try:
-                    mst_measures, mst_matrix, success = calculate_mst_measures(avg_matrices['pli'])
+                    mst_measures, mst_matrix, success = calculate_mst_measures(avg_matrices["pli"])
                     if success:
                         mst_matrix_symmetric = mst_matrix + mst_matrix.T
-                        avg_matrices['pli_mst'] = mst_matrix_symmetric
+                        avg_matrices["pli_mst"] = mst_matrix_symmetric
                         logging.info(f"Calculated PLI MST from averaged connectivity matrix for {subject}-{condition}")
                     else:
                         logging.warning(f"Could not calculate PLI MST from averaged matrix for {subject}-{condition}")
@@ -1807,12 +1807,12 @@ def process_subject_condition(args):
                     logging.error(f"Error calculating PLI MST from averaged matrix: {str(e)}")
                     
             # Handle AEC MST
-            if calc_aec_mst and avg_matrices['aec'] is not None and not concat_aecc:
+            if calc_aec_mst and avg_matrices["aec"] is not None and not concat_aecc:
                 try:
-                    mst_measures, mst_matrix, success = calculate_mst_measures(avg_matrices['aec'])
+                    mst_measures, mst_matrix, success = calculate_mst_measures(avg_matrices["aec"])
                     if success:
                         mst_matrix_symmetric = mst_matrix + mst_matrix.T
-                        avg_matrices['aec_mst'] = mst_matrix_symmetric
+                        avg_matrices["aec_mst"] = mst_matrix_symmetric
                         logging.info(f"Calculated AEC MST from averaged connectivity matrix for {subject}-{condition}")
                     else:
                         logging.warning(f"Could not calculate AEC MST from averaged matrix for {subject}-{condition}")
@@ -1821,70 +1821,70 @@ def process_subject_condition(args):
             
         # Prepare results dictionary
         results = {
-            'avg_jpe': np.mean(jpe_values) if jpe_values and calc_jpe else np.nan,
-            'avg_pe': np.mean(pe_values) if pe_values and calc_jpe else np.nan,
-            'avg_pli': np.mean(pli_values) if pli_values and calc_pli else np.nan,
-            'avg_aec': np.mean(aec_values) if aec_values and calc_aec else np.nan,
-            'avg_sampen': np.mean(sampen_values) if sampen_values and calc_sampen else np.nan,
-            'avg_apen': np.mean(apen_values) if apen_values and calc_apen else np.nan, 
-            'n_epochs': len(epoch_files),
-            'channel_names': channel_names if channel_names else [],
-            'matrices': avg_matrices if (save_matrices or save_mst) else None,
-            'channel_averages': channel_averages
+            "avg_jpe": np.mean(jpe_values) if jpe_values and calc_jpe else np.nan,
+            "avg_pe": np.mean(pe_values) if pe_values and calc_jpe else np.nan,
+            "avg_pli": np.mean(pli_values) if pli_values and calc_pli else np.nan,
+            "avg_aec": np.mean(aec_values) if aec_values and calc_aec else np.nan,
+            "avg_sampen": np.mean(sampen_values) if sampen_values and calc_sampen else np.nan,
+            "avg_apen": np.mean(apen_values) if apen_values and calc_apen else np.nan, 
+            "n_epochs": len(epoch_files),
+            "channel_names": channel_names if channel_names else [],
+            "matrices": avg_matrices if (save_matrices or save_mst) else None,
+            "channel_averages": channel_averages
         }
         
         # Add MST results and tracking metrics
         if calc_aec_mst:
-            for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                          'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                          'ref', 'mean']:
+            for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                          "diameter", "leaf", "hierarchy", "teff", "asp", 
+                          "ref", "mean"]:
                 if concat_aecc:
                     # For concatenated case, just store the single value
                     if aec_mst_values[measure]:
-                        results[f'aec_mst_{measure}'] = aec_mst_values[measure][0]  # Single value
-                        results[f'aec_mst_{measure}_valid_epochs'] = 1 if successful_mst_epochs else 0
+                        results[f"aec_mst_{measure}"] = aec_mst_values[measure][0]  # Single value
+                        results[f"aec_mst_{measure}_valid_epochs"] = 1 if successful_mst_epochs else 0
                     else:
-                        results[f'aec_mst_{measure}'] = np.nan
-                        results[f'aec_mst_{measure}_valid_epochs'] = 0
+                        results[f"aec_mst_{measure}"] = np.nan
+                        results[f"aec_mst_{measure}_valid_epochs"] = 0
                 else:
                     # Original epoch-by-epoch processing
                     if aec_mst_values[measure]:  # Only calculate mean if we have valid values
-                        results[f'aec_mst_{measure}'] = np.mean(aec_mst_values[measure])
-                        results[f'aec_mst_{measure}_valid_epochs'] = len(aec_mst_values[measure])
+                        results[f"aec_mst_{measure}"] = np.mean(aec_mst_values[measure])
+                        results[f"aec_mst_{measure}_valid_epochs"] = len(aec_mst_values[measure])
                     else:
-                        results[f'aec_mst_{measure}'] = np.nan
-                        results[f'aec_mst_{measure}_valid_epochs'] = 0
+                        results[f"aec_mst_{measure}"] = np.nan
+                        results[f"aec_mst_{measure}_valid_epochs"] = 0
             
             # Add the tracking metrics
-            results['aec_mst_successful_epochs'] = successful_mst_epochs
-            results['aec_mst_total_epochs'] = 1 if concat_aecc else len(epoch_files)
+            results["aec_mst_successful_epochs"] = successful_mst_epochs
+            results["aec_mst_total_epochs"] = 1 if concat_aecc else len(epoch_files)
             
             # Add concatenation info to results for reference
-            results['aec_concatenated'] = concat_aecc
+            results["aec_concatenated"] = concat_aecc
                     
         if calc_pli_mst:
-            for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                          'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                          'ref', 'mean']:
+            for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                          "diameter", "leaf", "hierarchy", "teff", "asp", 
+                          "ref", "mean"]:
                 if pli_mst_values[measure]:
-                    results[f'pli_mst_{measure}'] = np.mean(pli_mst_values[measure])
-                    results[f'pli_mst_{measure}_valid_epochs'] = len(pli_mst_values[measure])
+                    results[f"pli_mst_{measure}"] = np.mean(pli_mst_values[measure])
+                    results[f"pli_mst_{measure}_valid_epochs"] = len(pli_mst_values[measure])
                 else:
-                    results[f'pli_mst_{measure}'] = np.nan
-                    results[f'pli_mst_{measure}_valid_epochs'] = 0
+                    results[f"pli_mst_{measure}"] = np.nan
+                    results[f"pli_mst_{measure}_valid_epochs"] = 0
         
         if calc_power and power_values:
             for band_name in FREQUENCY_BANDS:
-                results[f'{band_name}_abs_power'] = np.mean(power_values[f'{band_name}_abs_power'])
-                results[f'{band_name}_rel_power'] = np.mean(power_values[f'{band_name}_rel_power'])
+                results[f"{band_name}_abs_power"] = np.mean(power_values[f"{band_name}_abs_power"])
+                results[f"{band_name}_rel_power"] = np.mean(power_values[f"{band_name}_rel_power"])
         
         if calc_peak:
-            results['peak_frequency'] = np.mean(power_values['peak_frequency'])
-            results['channels_without_peak'] = np.mean(power_values['channels_without_peak'])
+            results["peak_frequency"] = np.mean(power_values["peak_frequency"])
+            results["channels_without_peak"] = np.mean(power_values["channels_without_peak"])
                     
         if calc_sv:
             for band_name in FREQUENCY_BANDS:
-                band_key = f'sv_{band_name}'
+                band_key = f"sv_{band_name}"
                 # No averaging needed since we now have single values
                 results[band_key] = sv_values.get(band_key, np.nan)
                         
@@ -1895,47 +1895,47 @@ def process_subject_condition(args):
         
         # Define error_result dictionary
         error_result = {
-            'avg_jpe': np.nan,
-            'avg_pe': np.nan,
-            'avg_pli': np.nan,
-            'avg_aec': np.nan,
-            'avg_apen': np.nan,
-            'avg_sampen': np.nan,
-            'n_epochs': 0,
-            'channel_names': [],
-            'matrices': None if save_matrices else None,
-            'channel_averages': None
+            "avg_jpe": np.nan,
+            "avg_pe": np.nan,
+            "avg_pli": np.nan,
+            "avg_aec": np.nan,
+            "avg_apen": np.nan,
+            "avg_sampen": np.nan,
+            "n_epochs": 0,
+            "channel_names": [],
+            "matrices": None if save_matrices else None,
+            "channel_averages": None
         }
         
         # Add MST measures to error result if needed
         if calc_aec_mst:
-            for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                          'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                          'ref', 'mean']:
-                error_result[f'aec_mst_{measure}'] = np.nan
-                error_result[f'aec_mst_{measure}_valid_epochs'] = 0
-            error_result['aec_mst_successful_epochs'] = 0
-            error_result['aec_mst_total_epochs'] = len(epoch_files)
+            for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                          "diameter", "leaf", "hierarchy", "teff", "asp", 
+                          "ref", "mean"]:
+                error_result[f"aec_mst_{measure}"] = np.nan
+                error_result[f"aec_mst_{measure}_valid_epochs"] = 0
+            error_result["aec_mst_successful_epochs"] = 0
+            error_result["aec_mst_total_epochs"] = len(epoch_files)
             
         if calc_pli_mst:
-            for measure in ['degree', 'eccentr', 'betweenness', 'kappa', 'r', 
-                          'diameter', 'leaf', 'hierarchy', 'teff', 'asp', 
-                          'ref', 'mean']:
-                error_result[f'pli_mst_{measure}'] = np.nan
-                error_result[f'pli_mst_{measure}_valid_epochs'] = 0
+            for measure in ["degree", "eccentr", "betweenness", "kappa", "r", 
+                          "diameter", "leaf", "hierarchy", "teff", "asp", 
+                          "ref", "mean"]:
+                error_result[f"pli_mst_{measure}"] = np.nan
+                error_result[f"pli_mst_{measure}_valid_epochs"] = 0
 
         if calc_power:
             for band_name in FREQUENCY_BANDS:
-                error_result[f'{band_name}_abs_power'] = np.nan
-                error_result[f'{band_name}_rel_power'] = np.nan
+                error_result[f"{band_name}_abs_power"] = np.nan
+                error_result[f"{band_name}_rel_power"] = np.nan
         if calc_peak:
-            error_result['peak_frequency'] = np.nan
-            error_result['channels_without_peak'] = np.nan
+            error_result["peak_frequency"] = np.nan
+            error_result["channels_without_peak"] = np.nan
         
         # Add spectral variability measures to error result if needed
         if calc_sv:
             for band_name in FREQUENCY_BANDS:
-                error_result[f'sv_{band_name}'] = np.nan
+                error_result[f"sv_{band_name}"] = np.nan
         
         return subject, condition, error_result
 
@@ -1951,7 +1951,7 @@ def process_batch(batch_args, n_threads):
        logging.error(f"Pool processing failed: {str(e)}, falling back to single thread")
        return [process_subject_condition(args) for args in batch_args]
    finally:
-       if 'pool' in locals():
+       if "pool" in locals():
            pool.terminate()
            pool.join()
    
@@ -1981,19 +1981,19 @@ def group_epochs_by_condition(folder_path, folder_ext):
         
         # Look for epoch files in this directory
         for file in os.listdir(subdir_path):            
-            if file.startswith('.') or file.startswith('._'):
+            if file.startswith(".") or file.startswith("._"):
                 continue
                 
-            if not file.endswith('.txt'):
+            if not file.endswith(".txt"):
                 continue
                 
             # Check if file matches epoch pattern
-            if '_level_' in file and ('_Epoch_' in file or '_Epoch' in file):
+            if "_level_" in file and ("_Epoch_" in file or "_Epoch" in file):
                 try:
                     file_info = parse_epoch_filename(file)
                     full_path = os.path.join(subdir_path, file)
-                    base_name = subdir.replace(folder_ext, '')  # Use folder name without extension
-                    condition = file_info['condition']
+                    base_name = subdir.replace(folder_ext, "")  # Use folder name without extension
+                    condition = file_info["condition"]
                     grouped_files[base_name][condition].append(full_path)
                 except Exception as e:
                     print(f"Skipping file {file}: {str(e)}")
@@ -2045,7 +2045,7 @@ def process_all_subjects(grouped_files, convert_ints_pe, invert, n_threads,
                         calc_sv=False, sv_window=1000, 
                         save_matrices=False, save_mst=False, save_channel_averages=False,
                         concat_aecc=False, has_headers=True,
-                        psd_method='multitaper',
+                        psd_method="multitaper",
                         welch_window_ms=1000,
                         welch_overlap=50,
                         progress_callback=None):
@@ -2093,10 +2093,10 @@ def process_all_subjects(grouped_files, convert_ints_pe, invert, n_threads,
                 completed += 1
                 
                 # Log MST success rates if applicable
-                if calc_aec_mst and 'aec_mst_successful_epochs' in result:
-                    success_rate = (result['aec_mst_successful_epochs'] / 
-                                  result['aec_mst_total_epochs'] * 100 
-                                  if result['aec_mst_total_epochs'] > 0 else 0)
+                if calc_aec_mst and "aec_mst_successful_epochs" in result:
+                    success_rate = (result["aec_mst_successful_epochs"] / 
+                                  result["aec_mst_total_epochs"] * 100 
+                                  if result["aec_mst_total_epochs"] > 0 else 0)
                     logging.info(f"{subject} - {condition}: MST success rate: "
                                f"{success_rate:.1f}% ({result['aec_mst_successful_epochs']}/"
                                f"{result['aec_mst_total_epochs']} epochs)")
@@ -2135,7 +2135,7 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                          calc_aec_mst=False, calc_power=False, power_fs=256, calc_peak=False,
                          peak_min=None, peak_max=None, calc_sampen=False, calc_apen=False, calc_sv=False, 
                          save_channel_averages=False, concat_aecc=False, has_headers=True, sv_window=None,
-                         psd_method='multitaper', welch_window_ms=None, welch_overlap=None):
+                         psd_method="multitaper", welch_window_ms=None, welch_overlap=None):
 
     """
     Save results to Excel with organized columns by condition.
@@ -2147,68 +2147,68 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
       - Dynamically uses FREQUENCY_BANDS for non-broadband frequency bands.
     """
 
-    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # 1) Gather all unique conditions
         all_conditions = set()
         for subject_data in results_dict.values():
             all_conditions.update(subject_data.keys())
 
         # 2) Build a list of primary columns; start with 'subject'
-        columns = ['subject']
+        columns = ["subject"]
 
         for condition in sorted(all_conditions):
             # --- Complexity Measures (JPE/PE) ---
             if calc_jpe:
                 # e.g. "myCondition_avg_jpe", "myCondition_avg_pe"
                 measure_name = "jpe_inv" if invert else "jpe"
-                columns.append(f'{condition}_avg_{measure_name}')
-                columns.append(f'{condition}_avg_pe')
+                columns.append(f"{condition}_avg_{measure_name}")
+                columns.append(f"{condition}_avg_pe")
 
             # --- PLI ---
             if calc_pli:
-                columns.append(f'{condition}_avg_pli')
+                columns.append(f"{condition}_avg_pli")
 
             # If you also have MST columns for PLI:
             if calc_pli_mst:
                 # Example MST measures
                 mst_measures = [
-                    'degree', 'eccentr', 'betweenness', 'kappa', 'r',
-                    'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
-                    'ref', 'mean'
+                    "degree", "eccentr", "betweenness", "kappa", "r",
+                    "diameter", "leaf", "hierarchy", "teff", "asp",
+                    "ref", "mean"
                 ]
                 for mm in mst_measures:
-                    columns.append(f'{condition}_pli_mst_{mm}')
+                    columns.append(f"{condition}_pli_mst_{mm}")
                 # Possibly also track valid-epoch counters
-                columns.append(f'{condition}_pli_mst_successful_epochs')
-                columns.append(f'{condition}_pli_mst_total_epochs')
+                columns.append(f"{condition}_pli_mst_successful_epochs")
+                columns.append(f"{condition}_pli_mst_total_epochs")
 
             # --- AEC ---
             if calc_aec:
-                columns.append(f'{condition}_avg_aec')
+                columns.append(f"{condition}_avg_aec")
                 if calc_aec_mst:
                     # Add MST columns for AEC if needed
                     mst_measures = [
-                        'degree', 'eccentr', 'betweenness', 'kappa', 'r',
-                        'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
-                        'ref', 'mean'
+                        "degree", "eccentr", "betweenness", "kappa", "r",
+                        "diameter", "leaf", "hierarchy", "teff", "asp",
+                        "ref", "mean"
                     ]
                     for mm in mst_measures:
-                        columns.append(f'{condition}_aec_mst_{mm}')
-                    columns.append(f'{condition}_aec_mst_successful_epochs')
-                    columns.append(f'{condition}_aec_mst_total_epochs')
+                        columns.append(f"{condition}_aec_mst_{mm}")
+                    columns.append(f"{condition}_aec_mst_successful_epochs")
+                    columns.append(f"{condition}_aec_mst_total_epochs")
 
             # --- SampEn & ApEn ---
             if calc_sampen:
-                columns.append(f'{condition}_avg_sampen')
+                columns.append(f"{condition}_avg_sampen")
             if calc_apen:
-                columns.append(f'{condition}_avg_apen')
+                columns.append(f"{condition}_avg_apen")
 
             # Power & Peak Frequency ---
             def is_broadband_condition(condition):
                 """Check if condition matches broadband pattern from FREQUENCY_BANDS"""
-                if 'broadband' not in FREQUENCY_BANDS:
+                if "broadband" not in FREQUENCY_BANDS:
                     return False
-                pattern = FREQUENCY_BANDS['broadband']['pattern']
+                pattern = FREQUENCY_BANDS["broadband"]["pattern"]
                 return bool(re.search(pattern, condition, re.IGNORECASE))
             
             is_broadband_cond = is_broadband_condition(condition)
@@ -2218,29 +2218,29 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                 for band_name in FREQUENCY_BANDS:
                     if band_name.lower() != "broadband":  # Skip broadband
                         columns.extend([
-                            f'{condition}_{band_name}_abs_power',
-                            f'{condition}_{band_name}_rel_power'
+                            f"{condition}_{band_name}_abs_power",
+                            f"{condition}_{band_name}_rel_power"
                         ])
             
             # Peak frequency - can be calculated independently
             if calc_peak and is_broadband_cond:
-                columns.append(f'{condition}_peak_frequency')
-                columns.append(f'{condition}_channels_without_peak')
+                columns.append(f"{condition}_peak_frequency")
+                columns.append(f"{condition}_channels_without_peak")
 
             # --- Spectral Variability ---
             if calc_sv and is_broadband_cond:
                 for band_name in FREQUENCY_BANDS:
-                    if band_name.lower() == 'broadband':
+                    if band_name.lower() == "broadband":
                         continue
-                    columns.append(f'{condition}_sv_{band_name}')
+                    columns.append(f"{condition}_sv_{band_name}")
 
             # Always add epoch count for each condition
-            columns.append(f'{condition}_n_epochs')
+            columns.append(f"{condition}_n_epochs")
 
         # 3) Build rows of data
         rows = []
         for subject, conditions in results_dict.items():
-            row = {'subject': subject}
+            row = {"subject": subject}
 
             for condition in sorted(all_conditions):
                 data_for_condition = conditions[condition]
@@ -2248,44 +2248,44 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                 # JPE/PE measures
                 if calc_jpe:
                     measure_name = "jpe_inv" if invert else "jpe"
-                    row[f'{condition}_avg_{measure_name}'] = data_for_condition.get('avg_jpe', np.nan)
-                    row[f'{condition}_avg_pe'] = data_for_condition.get('avg_pe', np.nan)
+                    row[f"{condition}_avg_{measure_name}"] = data_for_condition.get("avg_jpe", np.nan)
+                    row[f"{condition}_avg_pe"] = data_for_condition.get("avg_pe", np.nan)
 
                 # PLI
                 if calc_pli:
-                    row[f'{condition}_avg_pli'] = data_for_condition.get('avg_pli', np.nan)
+                    row[f"{condition}_avg_pli"] = data_for_condition.get("avg_pli", np.nan)
 
                 # PLI MST
                 if calc_pli_mst:
                     mst_measures = [
-                        'degree', 'eccentr', 'betweenness', 'kappa', 'r',
-                        'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
-                        'ref', 'mean'
+                        "degree", "eccentr", "betweenness", "kappa", "r",
+                        "diameter", "leaf", "hierarchy", "teff", "asp",
+                        "ref", "mean"
                     ]
                     for mm in mst_measures:
-                        row[f'{condition}_pli_mst_{mm}'] = data_for_condition.get(f'pli_mst_{mm}', np.nan)
-                    row[f'{condition}_pli_mst_successful_epochs'] = data_for_condition.get('pli_mst_degree_valid_epochs', np.nan)
-                    row[f'{condition}_pli_mst_total_epochs'] = data_for_condition.get('pli_mst_total_epochs', np.nan)
+                        row[f"{condition}_pli_mst_{mm}"] = data_for_condition.get(f"pli_mst_{mm}", np.nan)
+                    row[f"{condition}_pli_mst_successful_epochs"] = data_for_condition.get("pli_mst_degree_valid_epochs", np.nan)
+                    row[f"{condition}_pli_mst_total_epochs"] = data_for_condition.get("pli_mst_total_epochs", np.nan)
 
                 # AEC
                 if calc_aec:
-                    row[f'{condition}_avg_aec'] = data_for_condition.get('avg_aec', np.nan)
+                    row[f"{condition}_avg_aec"] = data_for_condition.get("avg_aec", np.nan)
                     if calc_aec_mst:
                         mst_measures = [
-                            'degree', 'eccentr', 'betweenness', 'kappa', 'r',
-                            'diameter', 'leaf', 'hierarchy', 'teff', 'asp',
-                            'ref', 'mean'
+                            "degree", "eccentr", "betweenness", "kappa", "r",
+                            "diameter", "leaf", "hierarchy", "teff", "asp",
+                            "ref", "mean"
                         ]
                         for mm in mst_measures:
-                            row[f'{condition}_aec_mst_{mm}'] = data_for_condition.get(f'aec_mst_{mm}', np.nan)
-                        row[f'{condition}_aec_mst_successful_epochs'] = data_for_condition.get('aec_mst_successful_epochs', np.nan)
-                        row[f'{condition}_aec_mst_total_epochs'] = data_for_condition.get('aec_mst_total_epochs', np.nan)
+                            row[f"{condition}_aec_mst_{mm}"] = data_for_condition.get(f"aec_mst_{mm}", np.nan)
+                        row[f"{condition}_aec_mst_successful_epochs"] = data_for_condition.get("aec_mst_successful_epochs", np.nan)
+                        row[f"{condition}_aec_mst_total_epochs"] = data_for_condition.get("aec_mst_total_epochs", np.nan)
 
                 # SampEn & ApEn
                 if calc_sampen:
-                    row[f'{condition}_avg_sampen'] = data_for_condition.get('avg_sampen', np.nan)
+                    row[f"{condition}_avg_sampen"] = data_for_condition.get("avg_sampen", np.nan)
                 if calc_apen:
-                    row[f'{condition}_avg_apen'] = data_for_condition.get('avg_apen', np.nan)
+                    row[f"{condition}_avg_apen"] = data_for_condition.get("avg_apen", np.nan)
 
                 # Power & Peak Frequency
                 is_broadband_cond = is_broadband_condition(condition)
@@ -2295,84 +2295,84 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                     for band_name in FREQUENCY_BANDS:
                         if band_name.lower() == "broadband":
                             continue
-                        abs_key = f'{band_name}_abs_power'
-                        rel_key = f'{band_name}_rel_power'
-                        row[f'{condition}_{band_name}_abs_power'] = data_for_condition.get(abs_key, np.nan)
-                        row[f'{condition}_{band_name}_rel_power'] = data_for_condition.get(rel_key, np.nan)
+                        abs_key = f"{band_name}_abs_power"
+                        rel_key = f"{band_name}_rel_power"
+                        row[f"{condition}_{band_name}_abs_power"] = data_for_condition.get(abs_key, np.nan)
+                        row[f"{condition}_{band_name}_rel_power"] = data_for_condition.get(rel_key, np.nan)
                 
                 # Peak frequency
                 if calc_peak and is_broadband_cond:
-                    row[f'{condition}_peak_frequency'] = data_for_condition.get('peak_frequency', np.nan)
-                    row[f'{condition}_channels_without_peak'] = data_for_condition.get('channels_without_peak', np.nan)
+                    row[f"{condition}_peak_frequency"] = data_for_condition.get("peak_frequency", np.nan)
+                    row[f"{condition}_channels_without_peak"] = data_for_condition.get("channels_without_peak", np.nan)
                 
                 # Spectral Variability
                 if calc_sv and is_broadband_cond:
                     for band_name in FREQUENCY_BANDS:
-                        if band_name.lower() == 'broadband':
+                        if band_name.lower() == "broadband":
                             continue
-                        sv_key = f'sv_{band_name}'
-                        row[f'{condition}_sv_{band_name}'] = data_for_condition.get(sv_key, np.nan)
+                        sv_key = f"sv_{band_name}"
+                        row[f"{condition}_sv_{band_name}"] = data_for_condition.get(sv_key, np.nan)
 
                 # n_epochs
-                row[f'{condition}_n_epochs'] = data_for_condition.get('n_epochs', 0)
+                row[f"{condition}_n_epochs"] = data_for_condition.get("n_epochs", 0)
 
             rows.append(row)
 
         # 4) Create the DataFrame, reorder columns, and export
         df = pd.DataFrame(rows)
         df = df[columns]  # Force the column order we built above
-        df.to_excel(writer, sheet_name='Whole Brain Results', index=False)
+        df.to_excel(writer, sheet_name="Whole Brain Results", index=False)
         
         # Add analysis information sheet with sampling frequency info and spectral variability window
         info_data = {
-            'Parameter': [
-                'Analysis Date',
-                'JPE Inversion',
-                'PLI MST Calculated',
-                'AEC Type',
-                'AEC Concatenated Epochs',
-                'AEC MST Calculated',
-                'AEC Force Positive',
-                'Power Bands Calculated',
-                'Sampling Frequency (Hz)',
-                'PSD Method',
-                'Welch Window Length (ms)',
-                'Welch Overlap (%)',
-                'Peak Frequency Analysis', 
-                'Peak Frequency Range (Hz)', 
-                'Sample Entropy Calculated',
-                'Approximate Entropy Calculated',
-                'Spectral Variability Calculated',
-                'Spectral Variability Window (ms)',
-                'Channel Averages Calculated',
-                'Channel Names Source'
+            "Parameter": [
+                "Analysis Date",
+                "JPE Inversion",
+                "PLI MST Calculated",
+                "AEC Type",
+                "AEC Concatenated Epochs",
+                "AEC MST Calculated",
+                "AEC Force Positive",
+                "Power Bands Calculated",
+                "Sampling Frequency (Hz)",
+                "PSD Method",
+                "Welch Window Length (ms)",
+                "Welch Overlap (%)",
+                "Peak Frequency Analysis", 
+                "Peak Frequency Range (Hz)", 
+                "Sample Entropy Calculated",
+                "Approximate Entropy Calculated",
+                "Spectral Variability Calculated",
+                "Spectral Variability Window (ms)",
+                "Channel Averages Calculated",
+                "Channel Names Source"
             ],
-            'Value': [
+            "Value": [
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'Yes' if invert else 'No',
-                'Yes' if calc_pli_mst else 'No',
-                'AECc (orthogonalized)' if calc_aec and use_aecc else 'AEC' if calc_aec else 'Not calculated',
-                'Yes' if concat_aecc else 'No',
-                'Yes' if calc_aec_mst else 'No',
-                'Yes' if force_positive else 'No',
-                'Yes' if calc_power else 'No',
+                "Yes" if invert else "No",
+                "Yes" if calc_pli_mst else "No",
+                "AECc (orthogonalized)" if calc_aec and use_aecc else "AEC" if calc_aec else "Not calculated",
+                "Yes" if concat_aecc else "No",
+                "Yes" if calc_aec_mst else "No",
+                "Yes" if force_positive else "No",
+                "Yes" if calc_power else "No",
                 str(power_fs),
                 psd_method,  # New
-                str(welch_window_ms) if psd_method == 'welch' else 'N/A',  # New
-                str(welch_overlap) if psd_method == 'welch' else 'N/A',  # New
-                'Yes' if calc_peak else 'No',
+                str(welch_window_ms) if psd_method == "welch" else "N/A",  # New
+                str(welch_overlap) if psd_method == "welch" else "N/A",  # New
+                "Yes" if calc_peak else "No",
                 f"{calc_peak and f'{peak_min}-{peak_max}' or 'N/A'}", 
-                'Yes' if calc_sampen else 'No',
-                'Yes' if calc_apen else 'No',
-                'Yes' if calc_sv else 'No',
-                str(sv_window) if calc_sv else 'N/A',
-                'Yes' if save_channel_averages else 'No',
-                'File Headers' if has_headers else 'Auto-generated'
+                "Yes" if calc_sampen else "No",
+                "Yes" if calc_apen else "No",
+                "Yes" if calc_sv else "No",
+                str(sv_window) if calc_sv else "N/A",
+                "Yes" if save_channel_averages else "No",
+                "File Headers" if has_headers else "Auto-generated"
             ]
         }
         
         info_df = pd.DataFrame(info_data)
-        info_df.to_excel(writer, sheet_name='Analysis Information', index=False)
+        info_df.to_excel(writer, sheet_name="Analysis Information", index=False)
         
         # Save channel-level averages if requested
         if save_channel_averages:
@@ -2380,8 +2380,8 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
             all_channels = set()
             for subject, conditions in results_dict.items():
                 for condition, result in conditions.items():
-                    if result.get('channel_averages'):
-                        all_channels.update(result['channel_averages'].keys())
+                    if result.get("channel_averages"):
+                        all_channels.update(result["channel_averages"].keys())
             
             # Create rows with separate columns for each condition
             channel_rows = []
@@ -2391,18 +2391,18 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
             for subject, conditions in results_dict.items():
                 for channel in sorted(all_channels):
                     row = {
-                        'subject': subject,
-                        'channel': channel
+                        "subject": subject,
+                        "channel": channel
                     }
                     
                     # For each condition, add all its measures
                     for condition in sorted(all_conditions):
-                        if condition in conditions and conditions[condition].get('channel_averages'):
-                            channel_data = conditions[condition]['channel_averages'].get(channel, {})
+                        if condition in conditions and conditions[condition].get("channel_averages"):
+                            channel_data = conditions[condition]["channel_averages"].get(channel, {})
                             # Add each measure with condition prefix
                             for measure, value in channel_data.items():
-                                column_name = f'{condition}_{measure}'
-                                if measure.startswith('sv_'):  # Special handling for SV measures
+                                column_name = f"{condition}_{measure}"
+                                if measure.startswith("sv_"):  # Special handling for SV measures
                                     # SV values are now single values, not averaged
                                     row[column_name] = value
                                 else:
@@ -2418,29 +2418,29 @@ def save_results_to_excel(results_dict, output_path, invert, calc_pli_mst, calc_
                 df_channels = pd.DataFrame(channel_rows)
                 
                 # Keep only columns that have data
-                base_cols = ['subject', 'channel']
-                data_cols = sorted(measures_with_data, key=lambda x: (x.split('_')[0], x))
+                base_cols = ["subject", "channel"]
+                data_cols = sorted(measures_with_data, key=lambda x: (x.split("_")[0], x))
                 
                 # Final column order
                 column_order = base_cols + data_cols
                 df_channels = df_channels[column_order]
-                df_channels.to_excel(writer, sheet_name='Channel Averages', index=False)
+                df_channels.to_excel(writer, sheet_name="Channel Averages", index=False)
         
         # Save metadata about channels
         metadata_rows = []
         for subject, conditions in results_dict.items():
             for condition in sorted(all_conditions):
-                if condition in conditions and 'channel_names' in conditions[condition]:
+                if condition in conditions and "channel_names" in conditions[condition]:
                     metadata_rows.append({
-                        'subject': subject,
-                        'condition': condition,
-                        'channels': ', '.join(conditions[condition]['channel_names']),
-                        'n_channels': len(conditions[condition]['channel_names'])
+                        "subject": subject,
+                        "condition": condition,
+                        "channels": ", ".join(conditions[condition]["channel_names"]),
+                        "n_channels": len(conditions[condition]["channel_names"])
                     })
         
         if metadata_rows:
             metadata_df = pd.DataFrame(metadata_rows)
-            metadata_df.to_excel(writer, sheet_name='Channel Information', index=False)
+            metadata_df.to_excel(writer, sheet_name="Channel Information", index=False)
     
     logging.info(f"Results saved to: {output_path}")
     print(f"\nResults saved to {output_path}")
@@ -2484,7 +2484,7 @@ def main():
             logging.info(f"Folder path: {folder_path}")
             logging.info(f"Extension: {folder_ext}")
             logging.info(f"Processing files with{'out' if not values['-HAS_HEADERS-'] else ''} headers")
-            if not values['-HAS_HEADERS-']:
+            if not values["-HAS_HEADERS-"]:
                 logging.info("Channel names will be auto-generated")
             
             try:
@@ -2595,7 +2595,7 @@ def main():
                         continue
                 
                 def update_progress(value):
-                    window['-PROGRESS-'].update(value)
+                    window["-PROGRESS-"].update(value)
                     window.refresh()
                 
                 results = process_all_subjects(
@@ -2636,7 +2636,7 @@ def main():
                 
                 if results:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    output_path = os.path.join(folder_path, f'EEG_analysis_{timestamp}.xlsx')
+                    output_path = os.path.join(folder_path, f"EEG_analysis_{timestamp}.xlsx")
                     
                     try:
                         save_results_to_excel(
@@ -2681,18 +2681,18 @@ def main():
                             
                             for subject, conditions in results.items():
                                 for condition, result in conditions.items():
-                                    if 'matrices' in result and result['matrices']:
+                                    if "matrices" in result and result["matrices"]:
                                         freq_band = extract_freq_band(condition)
-                                        matrices = result['matrices']
-                                        current_channel_names = result['channel_names']
+                                        matrices = result["matrices"]
+                                        current_channel_names = result["channel_names"]
                                         
                                         # Extract level type from condition
-                                        level_type = 'source' if 'source' in condition.lower() else 'sensor'
+                                        level_type = "source" if "source" in condition.lower() else "sensor"
                                         
                                         # Save regular connectivity matrices
                                         if save_matrices:
                                             for feature, matrix in matrices.items():
-                                                if matrix is not None and feature in ['jpe', 'pli', 'aec']:
+                                                if matrix is not None and feature in ["jpe", "pli", "aec"]:
                                                     try:
                                                         if len(matrix) == len(current_channel_names):
                                                             filepath = save_connectivity_matrix(
@@ -2713,7 +2713,7 @@ def main():
                                         
                                         # Save MST matrices
                                         if save_mst:
-                                            for mst_type, matrix_key in [('pli_mst', 'pli_mst'), ('aec_mst', 'aec_mst')]:
+                                            for mst_type, matrix_key in [("pli_mst", "pli_mst"), ("aec_mst", "aec_mst")]:
                                                 if matrix_key in matrices and matrices[matrix_key] is not None:
                                                     try:
                                                         if len(matrices[matrix_key]) == len(current_channel_names):

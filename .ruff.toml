@@ -70,12 +70,10 @@ extend-safe-fixes = [
 ]
 
 [lint.flake8-quotes]
-inline-quotes = "single"
-docstring-quotes = "single"
-multiline-quotes = "single"
+inline-quotes = "double"
+docstring-quotes = "double"
+multiline-quotes = "double"
 
-# [lint.flake8-unused-arguments]
-# ignore-variadic-names = true # Whether to allow unused variadic arguments, like *args and **kwargs.
 
-# [lint.flake8-builtins]
-# builtins-strict-checking = false # Whether to enable strict checking of builtins.
+[format]
+quote-style = "double"
