@@ -127,7 +127,7 @@ def write_config_file(config):
 def load_config(fn):
     """Read config file in .pkl format."""
     with open(fn, "rb") as f:
-        return pickle.load(f)
+        return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
 
 
 def select_input_file_paths(config, settings):
@@ -558,7 +558,7 @@ def ask_epoch_selection(config):
             if event == "Yes":
                 config["apply_epoch_selection"] = 1
                 if config["rerun"] == 1:
-                    rerun_no_previous_epoch_selection = 1
+                    rerun_no_previous_epoch_selection = 1  # noqa: F841 #TODO: is this needed? can't it just be `pass`?
                 config = ask_epoch_length(config, settings)  # ask epoch length
                 break
             if event == "No":
@@ -734,7 +734,7 @@ def show_channel_correction_window(raw, montage_name):
     def create_table_data(current, expected):
         """Create table data with matched channels aligned."""
         expected_set = set(expected)
-        current_set = set(current)
+        current_set = set(current)  # noqa: F841 #TODO: is `current_set` needed? Can't this line just be `set(current)`?
 
         # First, handle exact matches
         matched_pairs = []

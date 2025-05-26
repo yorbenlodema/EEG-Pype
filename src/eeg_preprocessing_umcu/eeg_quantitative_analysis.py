@@ -908,7 +908,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                 total_mask = (f >= broadband_min) & (f <= broadband_max)
                 if not np.any(total_mask):
                     logger.exception("No frequencies found in the broadband range.")
-                    for band_name in cv_values:
+                    for band_name in cv_values:  # noqa: PLC0206
                         cv_values[band_name][channel] = np.nan
                     continue
 
@@ -943,7 +943,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
             except Exception:
                 logger.exception(f"Error processing channel {channel}")
                 # Fill with NaN for all bands on this channel
-                for band_name in cv_values:
+                for band_name in cv_values:  # noqa: PLC0206
                     cv_values[band_name][channel] = np.nan
 
         return cv_values
