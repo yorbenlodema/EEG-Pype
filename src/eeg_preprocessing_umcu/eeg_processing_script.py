@@ -389,7 +389,7 @@ def select_output_directory(config):
         layout = [
             [
                 sg.Text(
-                    "Select base output directory to save EEG data and log files to\n(Subdirectories will be created for log, epochs etc.)",
+                    "Select base output directory to save EEG data and log files to\n(Subdirectories will be created for log, epochs etc.)",  # noqa: E501
                     background_color="white",
                 )
             ],
@@ -772,10 +772,8 @@ def show_channel_correction_window(raw, montage_name, settings):
 
         # Add warnings about mismatches
         warnings = []
-        if len(modified_channels) != len(expected_channels):
-            warnings.append(
-                f"Number of channels doesn't match! Current: {len(modified_channels)}, Expected: {len(expected_channels)}"
-            )
+        if (n_mod := len(modified_channels)) != (n_exp := len(expected_channels)):
+            warnings.append(f"Number of channels doesn't match! Current: {n_mod}, Expected: {n_exp}")
 
         extra_channels = set(modified_channels) - set(expected_channels)
         if extra_channels:
