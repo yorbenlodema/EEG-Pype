@@ -206,7 +206,7 @@ In the GUI, the number of threads should be specified. This number means that th
    - Similar to SampEn but with self-matches.
    - Options:
      - Order m: Pattern length (typically 1 or 2).
-     - Tolerance r: Similarity criterion (typically 0.1-0.25 × SD).
+     - Tolerance r: Similarity criterion (typically 0.1-0.25 * SD).
 
 #### Spectral Analysis Details
 1. **Peak Frequency Analysis**

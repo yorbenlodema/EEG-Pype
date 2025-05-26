@@ -749,7 +749,7 @@ def calculate_sampen_for_channels(data, m=2):
 
     Parameters
     ----------
-    data : numpy array (time points × channels)
+    data : numpy array (time points * channels)
     m : int
         Embedding dimension (order)
 
@@ -980,7 +980,7 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
     frequencies : numpy array
         Frequency values
     psd : numpy array
-        Power spectral density (frequencies × channels)
+        Power spectral density (frequencies * channels)
     freq_range : tuple
         Frequency range to search for peaks (min_freq, max_freq)
     smoothing_window : int
@@ -1271,7 +1271,7 @@ def calculate_aecc(data, orthogonalize=False, force_positive=True):
 
     Parameters
     ----------
-    data : numpy array (time points × channels)
+    data : numpy array (time points * channels)
         EEG data array
     orthogonalize : bool, optional
         Whether to perform orthogonalization
@@ -1280,7 +1280,7 @@ def calculate_aecc(data, orthogonalize=False, force_positive=True):
 
     Returns
     -------
-    numpy array (channels × channels)
+    numpy array (channels * channels)
         AEC(c) correlation matrix
     """
 
@@ -1336,7 +1336,7 @@ def calculate_pe(data, n=4, st=1):
 
     Parameters
     ----------
-        data : numpy array (time points × channels)
+        data : numpy array (time points * channels)
         n : int, embedding dimension
         st : int, time delay (should scale with sampling frequency)
 
@@ -1409,7 +1409,7 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 
     Parameters
     ----------
-        data : numpy array (time points × channels)
+        data : numpy array (time points * channels)
         n : int, embedding dimension
         st : int, time delay (should scale with sampling frequency)
         convert_ints : bool, whether to convert data to integers
