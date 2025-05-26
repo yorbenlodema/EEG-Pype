@@ -23,6 +23,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyiauWyJB1gdyGQlPvXbgi7IAswIIk3xnpjYF2QVPuccn2aVNJdRhCnI96RMUTtcdzOMYzIM05eNLjWQjyxMQi8wGirTkGxl2jUZcWc5YzYZOUyRXllcQGExvvFeDWz1jlVbVnEROW3ZzXIJGzUalWp9huwImjmojivNhSr4Ew9ItiOwHikTXmpFxthZIUrZ8pfcCnFNQ0iIJjyokihWeWm95yfYymHVJu2I4iqwxi5T9mAFatLZaUkxphHcv3DQRi3OcipJZMBbN2ZR6lvbeWEEkiuL7CfJSDIbt2n1mwBY8WY555qIsj8oriYISiJwNiwQq3GVvzEdaGL9VtyZMXbJgJIRnCrI06II1jCQNxDNSj8YEyPICiNwyiaR1GVFw0VZOUeltz1cW3EVFlUZcC3IG6nIUj3ICwjM3jQQ6tWMUT5IAtLMADTUdi8L1ClJQERYEXfRelmR0XBhDwTa5XyJalIcXyoIX6aIvj3ICwSM3jcYrtcMYT2AFtgMMDTkNiNL4CtJKFIbDWmFQpNbUEFFckFZeHrJVlRcY3DM9isOmicJ258bD3qJjiKZVWp5Psab62lRPllb7WbFQAbcOHtJsv6dUGm9EueLXmv1ylIIliowFiAShVhBZBwZuGnRVyXZrXMNdzTI9j7osioM5T8QxztLBjCEoyPMvSI4XySMRzxk3umMeT5MeisfZQJ=c=02504c6fb7ca09721d288ae69f8237c96a99697e5b723e543938c4be810e2615f6fa037769c1edbd61ae40a244556b95fdfc2843df8e3807e955bc2c1d4be04c7022e2aa84c8eef696a9c6a61297e79cc4f465fb5e94513820c17814b2d35afadfa00653a9157afbad05ce088b890ca447c12c1df95d67e61ceed0b57d99ee7f26bfca445ad111393dab2dd1b6bee992510a1e973d0c6fae38f654816cc8de05ce7a79081d2029d636be38fb06ff7c68bfa0bdf080c7bb349a71ec74894e9f746bcbe58a67482485609109ec0a416582fc50f3500f55d5a021e7ea0ce4aafa6a207c77b80c2b48484e70314ef2b1a14970f110336f4c68eed12b49b4f3560b9e48eca892473d97b6ccb712cd086b0baa6aef3aa59be23f951a3476fbc5824402af301b988f410cf050f722fa3f2995ae68d4852645384eccec7841c10fe44b08102cc32a6d94a5854d0a148cecf8d25a51067db2e71842845dd715141ca15f1a5dd475bf4cba5afb23e794e77a53b89590ea0a37e638d46c73c869f4957c4a445d813a94167f3aaca7b58ce66ccb0c605e4820cc661c3d2ae832e41ee9fd46357fb40d26e103d4d747794f8548c27c363e096d495269740a6c08e5f936aec6c689a5a18694b24c37268c9c18760d063ad62b96d505b01074f81d7bb94d456c0d2bca0dd8b96b2246167bb1d0ce36a44a4ec051d22a72260ebbf910b375e511158"
 import PySimpleGUI as sg  # noqa: E402, N813
 
+logger = logging.getLogger(__name__)
 
 # Configuration
 FOLDER_EXTENSION = "bdf"  # Change this to match your folder extension (e.g., 'bdf', 'edf', etc.)
@@ -107,7 +108,7 @@ class MemoryMonitor:
             memory_threshold = (available_memory * MAX_MEMORY_PERCENT) / 100
 
             if estimated_memory > memory_threshold:
-                logging.warning(
+                logger.warning(
                     f"Concatenation may exceed memory limits. "
                     f"Estimated need: {estimated_memory / 1e9:.2f}GB, "
                     f"Available: {memory_threshold / 1e9:.2f}GB"
@@ -115,8 +116,8 @@ class MemoryMonitor:
                 return False
             return True
 
-        except Exception as e:
-            logging.error(f"Error checking memory for concatenation: {str(e)}")
+        except Exception:
+            logger.exception("Error checking memory for concatenation")
             return False
 
 
@@ -136,8 +137,8 @@ def setup_logging(folder_path):
     )
 
     # Test the logging setup
-    logging.info("Logging initialized")
-    logging.info(f"Log file created at: {log_filename}")
+    logger.info("Logging initialized")
+    logger.info(f"Log file created at: {log_filename}")
 
     return log_filename
 
@@ -596,8 +597,8 @@ def calculate_PSD(
             result["frequencies"] = frequencies
             result["psd"] = psd
 
-        except Exception as e:
-            logging.error(f"Error calculating multitaper PSD: {str(e)}")
+        except Exception:
+            logger.exception("Error calculating multitaper PSD")
             raise
 
     elif method == "welch":
@@ -611,8 +612,8 @@ def calculate_PSD(
             result["frequencies"] = frequencies
             result["psd"] = psd
 
-        except Exception as e:
-            logging.error(f"Error calculating Welch PSD: {str(e)}")
+        except Exception:
+            logger.exception("Error calculating Welch PSD")
             raise
 
     elif method == "fft":
@@ -621,8 +622,8 @@ def calculate_PSD(
             result["frequencies"] = frequencies
             result["psd"] = psd
 
-        except Exception as e:
-            logging.error(f"Error calculating FFT PSD: {str(e)}")
+        except Exception:
+            logger.exception("Error calculating FFT PSD")
             raise
 
     # Apply frequency range if specified
@@ -755,10 +756,10 @@ def calculate_sampen_for_channels(data, m=2):
             sampen_values[ch] = sample_entropy(data[:, ch], order=m)
 
             if ch % 10 == 0:  # Log progress every 10 channels
-                logging.info(f"Processed SampEn for {ch}/{n_channels} channels")
+                logger.info(f"Processed SampEn for {ch}/{n_channels} channels")
 
-        except Exception as e:
-            logging.error(f"Error calculating SampEn for channel {ch}: {str(e)}")
+        except Exception:
+            logger.exception(f"Error calculating SampEn for channel {ch}")
             sampen_values[ch] = np.nan
 
     return sampen_values
@@ -798,10 +799,10 @@ def calculate_apen_for_channels(data, m=1, r=0.25):
             apen_values[ch] = phi_m - phi_m_plus_1
 
             if ch % 10 == 0:  # Log progress every 10 channels
-                logging.info(f"Processed ApEn for {ch}/{n_channels} channels")
+                logger.info(f"Processed ApEn for {ch}/{n_channels} channels")
 
-        except Exception as e:
-            logging.error(f"Error calculating ApEn for channel {ch}: {str(e)}")
+        except Exception:
+            logger.exception(f"Error calculating ApEn for channel {ch}")
             apen_values[ch] = np.nan
 
     return apen_values
@@ -861,7 +862,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
 
         # Require at least 3 windows for a meaningful coefficient of variation
         if num_samples < 3 * samples_per_window:
-            logging.warning(
+            logger.warning(
                 f"Data length ({num_samples}) too short for meaningful "
                 f"variability calculation with window length {samples_per_window} samples."
             )
@@ -869,7 +870,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
 
         # 1) Identify the broadband range for total power
         if "broadband" not in FREQUENCY_BANDS:
-            logging.error("Broadband frequency range not defined in FREQUENCY_BANDS")
+            logger.exception("Broadband frequency range not defined in FREQUENCY_BANDS")
             return None
         broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
 
@@ -896,7 +897,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                 # Create mask for broadband total power
                 total_mask = (f >= broadband_min) & (f <= broadband_max)
                 if not np.any(total_mask):
-                    logging.error("No frequencies found in the broadband range.")
+                    logger.exception("No frequencies found in the broadband range.")
                     for band_name in cv_values:
                         cv_values[band_name][channel] = np.nan
                     continue
@@ -930,15 +931,15 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                         cv_values[band_name][channel] = np.nan
 
             except Exception as ch_err:
-                logging.error(f"Error processing channel {channel}: {str(ch_err)}")
+                logger.exception(f"Error processing channel {channel}: {str(ch_err)}")
                 # Fill with NaN for all bands on this channel
                 for band_name in cv_values:
                     cv_values[band_name][channel] = np.nan
 
         return cv_values
 
-    except Exception as e:
-        logging.error(f"Error in spectral variability calculation: {str(e)}")
+    except Exception:
+        logger.exception("Error in spectral variability calculation")
         return None
 
 
@@ -982,7 +983,7 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
     freq_range_idx = np.where(freq_mask)[0]
 
     if len(freq_range_idx) == 0:
-        logging.warning(f"No frequencies found in range {freq_range[0]}-{freq_range[1]} Hz")
+        logger.warning(f"No frequencies found in range {freq_range[0]}-{freq_range[1]} Hz")
         return np.full(num_channels, np.nan)
 
     # Get masked frequencies and PSD
@@ -1018,8 +1019,8 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
             else:
                 peak_frequencies[channel] = np.nan
 
-        except Exception as e:
-            logging.error(f"Error calculating peak frequency for channel {channel}: {str(e)}")
+        except Exception:
+            logger.exception(f"Error calculating peak frequency for channel {channel}")
             peak_frequencies[channel] = np.nan
 
     return peak_frequencies
@@ -1221,8 +1222,8 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
 
         return measures, mst_matrix, True
 
-    except Exception as e:
-        logging.error(f"Error in MST measures calculation: {str(e)}")
+    except Exception:
+        logger.exception("Error in MST measures calculation")
         return None, None, False
 
 
@@ -1538,11 +1539,11 @@ def process_subject_condition(args):
             "aec": None,
         }
 
-        logging.info(f"Processing {subject} - {condition} ({len(epoch_files)} epochs)")
+        logger.info(f"Processing {subject} - {condition} ({len(epoch_files)} epochs)")
 
         for i, file_path in enumerate(epoch_files):
             if MemoryMonitor.check_memory():
-                logging.warning(f"High memory usage detected while processing {subject}")
+                logger.warning(f"High memory usage detected while processing {subject}")
                 time.sleep(1)
 
             try:
@@ -1551,7 +1552,7 @@ def process_subject_condition(args):
                     data = pd.read_csv(file_path, sep=None, engine="python")
                     if channel_names is None:
                         channel_names = data.columns.tolist()
-                        logging.info(f"{subject} - {condition}: Found {len(channel_names)} channels from headers")
+                        logger.info(f"{subject} - {condition}: Found {len(channel_names)} channels from headers")
                 else:
                     # First read the first row to check if it's non-numerical
                     first_row = pd.read_csv(file_path, sep=None, engine="python", header=None, nrows=1)
@@ -1561,7 +1562,7 @@ def process_subject_condition(args):
                         first_row.astype(float)
                     except (ValueError, TypeError):
                         is_header = True
-                        logging.info(f"Found non-numeric header in {os.path.basename(file_path)}, ignoring first row")
+                        logger.info(f"Found non-numeric header in {os.path.basename(file_path)}, ignoring first row")
 
                     data = pd.read_csv(
                         file_path, sep=None, engine="python", header=None, skiprows=1 if is_header else 0
@@ -1573,7 +1574,7 @@ def process_subject_condition(args):
                     if channel_names is None:
                         n_columns = len(data.columns)
                         channel_names = [f"Channel_{i + 1}" for i in range(n_columns)]
-                        logging.info(f"{subject} - {condition}: Generated {len(channel_names)} channel names")
+                        logger.info(f"{subject} - {condition}: Generated {len(channel_names)} channel names")
                     else:
                         current_columns = len(data.columns)
                         if current_columns != len(channel_names):
@@ -1581,12 +1582,12 @@ def process_subject_condition(args):
                                 f"Inconsistent number of columns in {os.path.basename(file_path)}. "
                                 f"Expected {len(channel_names)}, found {current_columns}"
                             )
-                            logging.error(error_msg)
+                            logger.exception(error_msg)
                             raise ValueError(error_msg)
 
                 # Check for NaN values
                 if data.isna().any().any():
-                    logging.warning(
+                    logger.warning(
                         f"Found non-numeric values in {os.path.basename(file_path)} that were converted to NaN"
                     )
 
@@ -1620,7 +1621,7 @@ def process_subject_condition(args):
 
                         if calc_power:
                             try:
-                                logging.info(f"Starting power calculation for {subject} - {condition}, epoch {i + 1}")
+                                logger.info(f"Starting power calculation for {subject} - {condition}, epoch {i + 1}")
                                 powers, channel_powers = calculate_power_bands(
                                     frequencies=spectral_data["frequencies"], psd=spectral_data["psd"]
                                 )
@@ -1628,7 +1629,7 @@ def process_subject_condition(args):
                                 # Store whole-brain averages
                                 for measure, value in powers.items():
                                     power_values[measure].append(value)
-                                    logging.info(f"Power measure {measure}: {value}")
+                                    logger.info(f"Power measure {measure}: {value}")
 
                                 # Store channel-level results if requested
                                 if save_channel_averages:
@@ -1641,8 +1642,8 @@ def process_subject_condition(args):
                                                 channel_powers[f"{band_name}_rel_power"][ch]
                                             )
 
-                            except Exception as e:
-                                logging.error(f"Error calculating power measures for epoch {i + 1}: {str(e)}")
+                            except Exception:
+                                logger.exception(f"Error calculating power measures for epoch {i + 1}")
                                 for band_name in FREQUENCY_BANDS:
                                     power_values[f"{band_name}_abs_power"].append(np.nan)
                                     power_values[f"{band_name}_rel_power"].append(np.nan)
@@ -1664,8 +1665,8 @@ def process_subject_condition(args):
                                 power_values["peak_frequency"].append(np.nanmean(peak_freqs))
                                 power_values["channels_without_peak"].append(n_channels_without_peak)
 
-                            except Exception as e:
-                                logging.error(f"Error calculating peak frequency: {str(e)}")
+                            except Exception:
+                                logger.exception("Error calculating peak frequency")
                                 power_values["peak_frequency"].append(np.nan)
                                 power_values["channels_without_peak"].append(np.nan)
 
@@ -1683,15 +1684,13 @@ def process_subject_condition(args):
                                         ):
                                             raise MemoryError("Insufficient memory for safe concatenation of SV epochs")
                                         del test_data
-                                    except Exception as e:
-                                        logging.error(f"Error checking memory requirements for SV: {str(e)}")
+                                    except Exception:
+                                        logger.exception("Error checking memory requirements for SV")
                                         raise
 
                                 # Initialize list to store all epochs
                                 all_data_sv = []
-                                logging.info(
-                                    f"Processing concatenated spectral variability for {subject} - {condition}"
-                                )
+                                logger.info(f"Processing concatenated spectral variability for {subject} - {condition}")
 
                                 # Read and store all epochs with offset correction
                                 for file_path in epoch_files:
@@ -1705,10 +1704,8 @@ def process_subject_condition(args):
 
                                         all_data_sv.append(epoch_data)
                                         del data, epoch_data
-                                    except Exception as e:
-                                        logging.error(
-                                            f"Error processing file {os.path.basename(file_path)} for SV: {str(e)}"
-                                        )
+                                    except Exception:
+                                        logger.exception(f"Error processing file {os.path.basename(file_path)} for SV")
                                         continue
 
                                 if all_data_sv:
@@ -1719,7 +1716,7 @@ def process_subject_condition(args):
                                         all_data_sv = None
 
                                         if MemoryMonitor.check_memory():
-                                            logging.warning("High memory usage detected after concatenation")
+                                            logger.warning("High memory usage detected after concatenation")
                                             time.sleep(1)
 
                                         # Calculate SV on concatenated data
@@ -1742,19 +1739,17 @@ def process_subject_condition(args):
                                                 band_key = f"sv_{band_name}"
                                                 sv_values[band_key] = np.nanmean(values)
 
-                                    except Exception as e:
-                                        logging.error(
-                                            f"Error calculating spectral variability on concatenated data: {str(e)}"
-                                        )
+                                    except Exception:
+                                        logger.exception("Error calculating spectral variability on concatenated data")
                                         for band_name in FREQUENCY_BANDS:
                                             sv_values[f"sv_{band_name}"] = np.nan
                                 else:
-                                    logging.error("No valid epochs could be processed for spectral variability")
+                                    logger.exception("No valid epochs could be processed for spectral variability")
                                     for band_name in FREQUENCY_BANDS:
                                         sv_values[f"sv_{band_name}"] = np.nan
 
-                            except Exception as e:
-                                logging.error(f"Error in spectral variability processing: {str(e)}")
+                            except Exception:
+                                logger.exception("Error in spectral variability processing")
                                 for band_name in FREQUENCY_BANDS:
                                     sv_values[f"sv_{band_name}"] = np.nan
 
@@ -1766,8 +1761,8 @@ def process_subject_condition(args):
                         # Clean up spectral data
                         del spectral_data
 
-                    except Exception as e:
-                        logging.error(f"Error in spectral calculations: {str(e)}")
+                    except Exception:
+                        logger.exception("Error in spectral calculations")
                         # Set all spectral measures to NaN
                         if calc_power:
                             for band_name in FREQUENCY_BANDS:
@@ -1833,8 +1828,8 @@ def process_subject_condition(args):
                                 if success:
                                     for measure, value in mst_measures.items():
                                         pli_mst_values[measure].append(value)
-                            except Exception as e:
-                                logging.error(f"Error calculating PLI MST measures for epoch {i + 1}: {str(e)}")
+                            except Exception:
+                                logger.exception(f"Error calculating PLI MST measures for epoch {i + 1}")
                                 for measure in [
                                     "degree",
                                     "eccentr",
@@ -1851,15 +1846,15 @@ def process_subject_condition(args):
                                 ]:
                                     pli_mst_values[measure].append(np.nan)
 
-                    except Exception as e:
-                        logging.error(f"Error calculating PLI: {str(e)}")
+                    except Exception:
+                        logger.exception("Error calculating PLI")
                         pli_values.append(np.nan)
 
                 # Calculate AEC/AECc if requested
                 if calc_aec:
                     try:
                         if concat_aecc:
-                            logging.info(
+                            logger.info(
                                 f"Processing concatenated AEC{'c' if use_aecc else ''} for {subject} - {condition}"
                             )
                             # Initialize list to store all epochs
@@ -1875,8 +1870,8 @@ def process_subject_condition(args):
 
                                         all_data.append(epoch_data)
                                         del data, epoch_data
-                                    except Exception as e:
-                                        logging.error(f"Error processing file {os.path.basename(file_path)}: {str(e)}")
+                                    except Exception:
+                                        logger.exception(f"Error processing file {os.path.basename(file_path)}")
                                         continue
 
                                 if all_data:  # Check if we have any valid data
@@ -1904,7 +1899,7 @@ def process_subject_condition(args):
                             mst_results = None
                             if calc_aec_mst:
                                 try:
-                                    logging.info(f"Calculating MST on concatenated AEC{'c' if use_aecc else ''} matrix")
+                                    logger.info(f"Calculating MST on concatenated AEC{'c' if use_aecc else ''} matrix")
                                     mst_measures, mst_matrix, success = calculate_mst_measures(aec_matrix)
 
                                     if success:
@@ -1932,13 +1927,13 @@ def process_subject_condition(args):
                                         if save_mst:
                                             mst_matrix_symmetric = mst_matrix + mst_matrix.T
                                             avg_matrices["aec_mst"] = mst_matrix_symmetric
-                                            logging.info(f"Stored MST matrix for concatenated data")
+                                            logger.info("Stored MST matrix for concatenated data")
                                     else:
                                         successful_mst_epochs = 0
-                                        logging.warning(f"Failed to calculate MST on concatenated matrix")
-                                except Exception as e:
+                                        logger.warning("Failed to calculate MST on concatenated matrix")
+                                except Exception:
                                     successful_mst_epochs = 0
-                                    logging.error(f"Error calculating MST on concatenated matrix: {str(e)}")
+                                    logger.exception("Error calculating MST on concatenated matrix")
 
                             if save_channel_averages:
                                 channel_aec = np.mean(aec_matrix, axis=1)
@@ -1949,7 +1944,7 @@ def process_subject_condition(args):
                                         channel_results[ch_name]["aec"] = []
                                     # Always append to list (even for concatenated case)
                                     channel_results[ch_name]["aec"].append(channel_aec[ch])
-                                logging.info(f"Added AEC channel data for concatenated processing")
+                                logger.info("Added AEC channel data for concatenated processing")
 
                         else:
                             # Original epoch-by-epoch processing (keep existing code)
@@ -1973,8 +1968,8 @@ def process_subject_condition(args):
                                         for measure, value in mst_measures.items():
                                             aec_mst_values[measure].append(value)
                                         successful_mst_epochs += 1
-                                except Exception as e:
-                                    logging.error(f"Error calculating MST measures for epoch: {str(e)}")
+                                except Exception:
+                                    logger.exception("Error calculating MST measures for epoch")
                                     for measure in [
                                         "degree",
                                         "eccentr",
@@ -2001,8 +1996,8 @@ def process_subject_condition(args):
                                     # Always append to list
                                     channel_results[ch_name]["aec"].append(channel_aec[ch])
 
-                    except Exception as e:
-                        logging.error(f"Error calculating AEC{'c' if use_aecc else ''}: {str(e)}")
+                    except Exception:
+                        logger.exception(f"Error calculating AEC{'c' if use_aecc else ''}")
                         aec_values.append(np.nan)
 
                 # Calculate complexity measures
@@ -2015,9 +2010,9 @@ def process_subject_condition(args):
                                 channel_results[channel_names[ch]]["sampen"].append(sampen_values_ch[ch])
 
                         sampen_values.append(np.nanmean(sampen_values_ch))  # Value per epoch
-                        logging.info(f"Successfully calculated SampEn for epoch")
-                    except Exception as e:
-                        logging.error(f"Error in SampEn calculation: {str(e)}")
+                        logger.info("Successfully calculated SampEn for epoch")
+                    except Exception:
+                        logger.exception("Error in SampEn calculation")
                         sampen_values.append(np.nan)
 
                 if calc_apen:
@@ -2029,13 +2024,13 @@ def process_subject_condition(args):
                                 channel_results[channel_names[ch]]["apen"].append(apen_values_ch[ch])
 
                         apen_values.append(np.nanmean(apen_values_ch))  # Value per epoch
-                        logging.info(f"Successfully calculated ApEn for epoch")
-                    except Exception as e:
-                        logging.error(f"Error in ApEn calculation: {str(e)}")
+                        logger.info("Successfully calculated ApEn for epoch")
+                    except Exception:
+                        logger.exception("Error in ApEn calculation")
                         apen_values.append(np.nan)
 
-            except Exception as e:
-                logging.error(f"Error processing file {os.path.basename(file_path)}: {str(e)}")
+            except Exception:
+                logger.exception(f"Error processing file {os.path.basename(file_path)}")
                 continue
 
         # Calculate channel averages across epochs if requested
@@ -2054,7 +2049,7 @@ def process_subject_condition(args):
                 # Only normalize if not using concatenation or if this isn't an AEC matrix
                 if not (concat_aecc and key == "aec"):
                     avg_matrices[key] /= n_epochs
-                    logging.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
+                    logger.info(f"Normalized {key} connectivity matrix by {n_epochs} epochs")
 
         # Now calculate MSTs from averaged connectivity matrices if needed
         if save_mst:
@@ -2065,11 +2060,11 @@ def process_subject_condition(args):
                     if success:
                         mst_matrix_symmetric = mst_matrix + mst_matrix.T
                         avg_matrices["pli_mst"] = mst_matrix_symmetric
-                        logging.info(f"Calculated PLI MST from averaged connectivity matrix for {subject}-{condition}")
+                        logger.info(f"Calculated PLI MST from averaged connectivity matrix for {subject}-{condition}")
                     else:
-                        logging.warning(f"Could not calculate PLI MST from averaged matrix for {subject}-{condition}")
-                except Exception as e:
-                    logging.error(f"Error calculating PLI MST from averaged matrix: {str(e)}")
+                        logger.warning(f"Could not calculate PLI MST from averaged matrix for {subject}-{condition}")
+                except Exception:
+                    logger.exception("Error calculating PLI MST from averaged matrix")
 
             # Handle AEC MST
             if calc_aec_mst and avg_matrices["aec"] is not None and not concat_aecc:
@@ -2078,11 +2073,11 @@ def process_subject_condition(args):
                     if success:
                         mst_matrix_symmetric = mst_matrix + mst_matrix.T
                         avg_matrices["aec_mst"] = mst_matrix_symmetric
-                        logging.info(f"Calculated AEC MST from averaged connectivity matrix for {subject}-{condition}")
+                        logger.info(f"Calculated AEC MST from averaged connectivity matrix for {subject}-{condition}")
                     else:
-                        logging.warning(f"Could not calculate AEC MST from averaged matrix for {subject}-{condition}")
-                except Exception as e:
-                    logging.error(f"Error calculating AEC MST from averaged matrix: {str(e)}")
+                        logger.warning(f"Could not calculate AEC MST from averaged matrix for {subject}-{condition}")
+                except Exception:
+                    logger.exception("Error calculating AEC MST from averaged matrix")
 
         # Prepare results dictionary
         results = {
@@ -2177,8 +2172,8 @@ def process_subject_condition(args):
 
         return subject, condition, results
 
-    except Exception as e:
-        logging.error(f"Error processing {subject} - {condition}: {str(e)}")
+    except Exception:
+        logger.exception(f"Error processing {subject} - {condition}")
 
         # Define error_result dictionary
         error_result = {
@@ -2257,8 +2252,8 @@ def process_batch(batch_args, n_threads):
             for result in pool.imap_unordered(process_subject_condition, batch_args):
                 results.append(result)
             return results
-    except Exception as e:
-        logging.error(f"Pool processing failed: {str(e)}, falling back to single thread")
+    except Exception:
+        logger.exception("Pool processing failed, falling back to single thread")
         return [process_subject_condition(args) for args in batch_args]
     finally:
         if "pool" in locals():
@@ -2279,8 +2274,8 @@ def group_epochs_by_condition(folder_path, folder_ext):
         subdirs = [
             d for d in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, d)) and d.endswith(folder_ext)
         ]
-    except Exception as e:
-        sg.popup_error(f"Error accessing directory: {str(e)}")
+    except Exception:
+        sg.popup_error("Error accessing directory")
         return grouped_files
 
     if not subdirs:
@@ -2306,8 +2301,8 @@ def group_epochs_by_condition(folder_path, folder_ext):
                     base_name = subdir.replace(folder_ext, "")  # Use folder name without extension
                     condition = file_info["condition"]
                     grouped_files[base_name][condition].append(full_path)
-                except Exception as e:
-                    print(f"Skipping file {file}: {str(e)}")
+                except Exception:
+                    print(f"Skipping file {file}")
                     continue
 
     # Print summary of what was found
@@ -2331,19 +2326,19 @@ def group_epochs_by_condition(folder_path, folder_ext):
             else:
                 unknown_conditions.add(condition)
 
-    logging.info("Found the following frequency bands in the data:")
+    logger.info("Found the following frequency bands in the data:")
     for band in sorted(found_bands):
-        logging.info(f"  - {band} ({FREQUENCY_BANDS[band]['pattern']})")
+        logger.info(f"  - {band} ({FREQUENCY_BANDS[band]['pattern']})")
 
     if has_broadband:
-        logging.info("Broadband epochs are present - spectral calculations will be performed on these epochs")
+        logger.info("Broadband epochs are present - spectral calculations will be performed on these epochs")
     else:
-        logging.warning("No broadband epochs found - spectral calculations will be skipped")
+        logger.warning("No broadband epochs found - spectral calculations will be skipped")
 
     if unknown_conditions:
-        logging.warning("Found conditions with unrecognized frequency bands:")
+        logger.warning("Found conditions with unrecognized frequency bands:")
         for cond in sorted(unknown_conditions):
-            logging.warning(f"  - {cond}")
+            logger.warning(f"  - {cond}")
 
     return grouped_files
 
@@ -2425,8 +2420,8 @@ def process_all_subjects(
             )
 
     total_tasks = len(process_args)
-    logging.info(f"Starting processing of {total_tasks} subject-condition combinations")
-    logging.info(
+    logger.info(f"Starting processing of {total_tasks} subject-condition combinations")
+    logger.info(
         f"Processing options: JPE/PE calculation={calc_jpe}, JPE invert={invert}, "
         f"PE integer conversion={convert_ints_pe}, PLI calculation={calc_pli}, "
         f"PLI MST calculation={calc_pli_mst}, AEC calculation={calc_aec}, "
@@ -2443,7 +2438,7 @@ def process_all_subjects(
         batch = process_args[i : i + BATCH_SIZE]
         batch_size = len(batch)
 
-        logging.info(
+        logger.info(
             f"Processing batch {i // BATCH_SIZE + 1} of {(total_tasks + BATCH_SIZE - 1) // BATCH_SIZE} "
             f"({batch_size} combinations)"
         )
@@ -2465,7 +2460,7 @@ def process_all_subjects(
                         if result["aec_mst_total_epochs"] > 0
                         else 0
                     )
-                    logging.info(
+                    logger.info(
                         f"{subject} - {condition}: MST success rate: "
                         f"{success_rate:.1f}% ({result['aec_mst_successful_epochs']}/"
                         f"{result['aec_mst_total_epochs']} epochs)"
@@ -2478,28 +2473,28 @@ def process_all_subjects(
             avg_time_per_combo = batch_time / batch_size
             remaining_time = (total_tasks - completed) * avg_time_per_combo
 
-            logging.info(
+            logger.info(
                 f"Batch completed in {batch_time:.1f} seconds "
                 f"({avg_time_per_combo:.1f} sec/combination). "
                 f"Estimated remaining time: {remaining_time / 60:.1f} minutes"
             )
 
-        except Exception as e:
-            logging.error(f"Error processing batch: {str(e)}")
+        except Exception:
+            logger.exception("Error processing batch")
             continue
 
         # Memory check and cleanup
         if MemoryMonitor.check_memory():
-            logging.warning("High memory usage detected - triggering garbage collection")
+            logger.warning("High memory usage detected - triggering garbage collection")
             import gc
 
             gc.collect()
             time.sleep(1)
 
     # Final processing summary
-    logging.info(f"Processing completed: {completed}/{total_tasks} combinations processed")
+    logger.info(f"Processing completed: {completed}/{total_tasks} combinations processed")
     if completed < total_tasks:
-        logging.warning(f"Some combinations ({total_tasks - completed}) failed to process")
+        logger.warning(f"Some combinations ({total_tasks - completed}) failed to process")
 
     return dict(results)
 
@@ -2874,7 +2869,7 @@ def save_results_to_excel(
             metadata_df = pd.DataFrame(metadata_rows)
             metadata_df.to_excel(writer, sheet_name="Channel Information", index=False)
 
-    logging.info(f"Results saved to: {output_path}")
+    logger.info(f"Results saved to: {output_path}")
     print(f"\nResults saved to {output_path}")
 
 
@@ -2907,25 +2902,25 @@ def main():
                         raise ValueError("Welch window length must be greater than 0")
                     if not 0 <= welch_overlap <= 100:
                         raise ValueError("Welch overlap must be between 0 and 100")
-                except ValueError as e:
-                    sg.popup_error(f"Invalid Welch parameters: {str(e)}")
+                except ValueError:
+                    sg.popup_error("Invalid Welch parameters")
                     continue
 
             # Setup logging first thing
             log_file = setup_logging(folder_path)
-            logging.info("=== Starting new analysis run ===")
-            logging.info(f"Folder path: {folder_path}")
-            logging.info(f"Extension: {folder_ext}")
-            logging.info(f"Processing files with{'out' if not values['-HAS_HEADERS-'] else ''} headers")
+            logger.info("=== Starting new analysis run ===")
+            logger.info(f"Folder path: {folder_path}")
+            logger.info(f"Extension: {folder_ext}")
+            logger.info(f"Processing files with{'out' if not values['-HAS_HEADERS-'] else ''} headers")
             if not values["-HAS_HEADERS-"]:
-                logging.info("Channel names will be auto-generated")
+                logger.info("Channel names will be auto-generated")
 
             try:
                 n_threads = int(values["-THREADS-"])
                 if n_threads < 1 or n_threads > cpu_count():
                     raise ValueError(f"Number of threads must be between 1 and {cpu_count()}")
-            except ValueError as e:
-                sg.popup_error(f"Invalid number of threads: {str(e)}")
+            except ValueError:
+                sg.popup_error("Invalid number of threads")
                 continue
 
             if not folder_path or not folder_ext:
@@ -2934,8 +2929,8 @@ def main():
 
             try:
                 validate_frequency_bands()
-            except ValueError as e:
-                sg.popup_error(f"Invalid frequency band configuration: {str(e)}")
+            except ValueError:
+                sg.popup_error("Invalid frequency band configuration")
                 sys.exit(1)
 
             # Get matrix saving options
@@ -2962,8 +2957,8 @@ def main():
                     jpe_st = int(values["-JPE_ST-"])
                     if jpe_st < 1:
                         raise ValueError("Time step must be greater than 0")
-                except ValueError as e:
-                    sg.popup_error(f"Invalid time step value: {str(e)}")
+                except ValueError:
+                    sg.popup_error("Invalid time step value")
                     continue
 
                 # Validate power sampling frequency
@@ -2971,8 +2966,8 @@ def main():
                     power_fs = float(values["-POWER_FS-"])
                     if power_fs <= 0:
                         raise ValueError("Sampling frequency must be greater than 0")
-                except ValueError as e:
-                    sg.popup_error(f"Invalid sampling frequency value: {str(e)}")
+                except ValueError:
+                    sg.popup_error("Invalid sampling frequency value")
                     continue
 
                 # Validate peak frequency range
@@ -2985,8 +2980,8 @@ def main():
                             raise ValueError("Minimum frequency must be less than maximum")
                         if peak_min < 0 or peak_max > (power_fs / 2):
                             raise ValueError(f"Frequency range must be between 0 and {power_fs / 2} Hz")
-                    except ValueError as e:
-                        sg.popup_error(f"Invalid peak frequency range: {str(e)}")
+                    except ValueError:
+                        sg.popup_error("Invalid peak frequency range")
                         continue
 
                 # Validate SampEn parameters
@@ -2996,8 +2991,8 @@ def main():
                         sampen_m = int(values["-SAMPEN_M-"])
                         if sampen_m < 1:
                             raise ValueError("Order m must be greater than 0")
-                    except ValueError as e:
-                        sg.popup_error(f"Invalid SampEn order parameter: {str(e)}")
+                    except ValueError:
+                        sg.popup_error("Invalid SampEn order parameter")
                         continue
 
                 # Validate ApEn parameters
@@ -3012,8 +3007,8 @@ def main():
                         apen_r = float(values["-APEN_R-"])
                         if apen_r <= 0:
                             raise ValueError("Tolerance r must be greater than 0")
-                    except ValueError as e:
-                        sg.popup_error(f"Invalid ApEn parameter: {str(e)}")
+                    except ValueError:
+                        sg.popup_error("Invalid ApEn parameter")
                         continue
 
                 # Validate spectral variability window
@@ -3023,8 +3018,8 @@ def main():
                         sv_window = int(values["-SV_WINDOW-"])
                         if sv_window < 100:
                             raise ValueError("Window length must be at least 100ms")
-                    except ValueError as e:
-                        sg.popup_error(f"Invalid spectral variability window: {str(e)}")
+                    except ValueError:
+                        sg.popup_error("Invalid spectral variability window")
                         continue
 
                 def update_progress(value):
@@ -3103,7 +3098,7 @@ def main():
                         matrices_saved = 0
                         mst_matrices_saved = 0
 
-                        logging.info("Starting matrix saving process...")
+                        logger.info("Starting matrix saving process...")
 
                         if save_matrices or save_mst:
                             folders = create_matrix_folder_structure(
@@ -3136,13 +3131,13 @@ def main():
                                                                 level_type,
                                                             )
                                                             matrices_saved += 1
-                                                            logging.info(f"Saved {feature} matrix to: {filepath}")
+                                                            logger.info(f"Saved {feature} matrix to: {filepath}")
                                                         else:
-                                                            logging.error(
+                                                            logger.exception(
                                                                 f"Matrix dimension ({len(matrix)}) doesn't match channel count ({len(current_channel_names)})"
                                                             )
-                                                    except Exception as e:
-                                                        logging.error(f"Error saving {feature} matrix: {str(e)}")
+                                                    except Exception:
+                                                        logger.exception(f"Error saving {feature} matrix")
 
                                         # Save MST matrices
                                         if save_mst:
@@ -3163,20 +3158,20 @@ def main():
                                                                 level_type,
                                                             )
                                                             mst_matrices_saved += 1
-                                                            logging.info(f"Saved {matrix_key} matrix to: {filepath}")
+                                                            logger.info(f"Saved {matrix_key} matrix to: {filepath}")
                                                         else:
-                                                            logging.error(
+                                                            logger.exception(
                                                                 f"MST matrix dimension ({len(matrices[matrix_key])}) doesn't match channel count ({len(current_channel_names)})"
                                                             )
-                                                    except Exception as e:
-                                                        logging.error(f"Error saving {matrix_key} matrix: {str(e)}")
+                                                    except Exception:
+                                                        logger.exception(f"Error saving {matrix_key} matrix")
 
                         if matrices_saved > 0:
-                            logging.info(f"Saved {matrices_saved} connectivity matrices")
+                            logger.info(f"Saved {matrices_saved} connectivity matrices")
                         if mst_matrices_saved > 0:
-                            logging.info(f"Saved {mst_matrices_saved} MST matrices")
+                            logger.info(f"Saved {mst_matrices_saved} MST matrices")
 
-                        logging.info(f"Results saved to: {output_path}")
+                        logger.info(f"Results saved to: {output_path}")
                         success_message = f"Analysis complete!\nResults saved to:\n{output_path}"
                         if save_matrices:
                             success_message += f"\nConnectivity matrices saved in: {matrix_folder}"
@@ -3185,19 +3180,19 @@ def main():
                         success_message += f"\nLog file: {log_file}"
                         sg.popup(success_message)
 
-                    except Exception as e:
-                        logging.error(f"Error saving results: {str(e)}")
-                        sg.popup_error(f"Error saving results: {str(e)}")
+                    except Exception:
+                        logger.exception("Error saving results")
+                        sg.popup_error("Error saving results")
                 else:
-                    logging.warning("No results were generated")
+                    logger.warning("No results were generated")
                     sg.popup_error("No results were generated")
 
-            except Exception as e:
-                logging.error(f"Error during processing: {str(e)}")
-                sg.popup_error(f"Error during processing: {str(e)}")
+            except Exception:
+                logger.exception("Error during processing")
+                sg.popup_error("Error during processing")
 
             finally:
-                logging.info("Analysis run completed")
+                logger.info("Analysis run completed")
 
     window.close()
 

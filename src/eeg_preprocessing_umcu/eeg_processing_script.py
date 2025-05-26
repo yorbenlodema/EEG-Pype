@@ -719,7 +719,7 @@ def get_expected_channels(montage_name):
         montage = mne.channels.make_standard_montage(montage_name)
         return list(montage.ch_names)  # Convert to list for consistency
     except Exception as e:
-        msg = f"Warning: Could not get channel names for montage '{montage_name}' from MNE: {str(e)}"
+        msg = f"Warning: Could not get channel names for montage '{montage_name}' from MNE: {e}"
         window["-RUN_INFO-"].update(msg + "\n", append=True)
         return []
 
