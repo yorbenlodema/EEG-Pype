@@ -1,6 +1,4 @@
-"""
-@authors:Herman van Dellen en Yorben Lodema.
-"""
+"""@authors:Herman van Dellen en Yorben Lodema."""
 
 import os
 import pickle
@@ -107,13 +105,13 @@ layout = [
 
 
 def print_dict(dict):  # pprint and json.print do not work well with composite keys!
-    """Function to print dictionary."""
+    """Print dictionary."""
     for key in dict.keys():
         print(key, ":", dict[key])
 
 
 def write_config_file(config):
-    """Function to write config file in .pkl format."""
+    """Write config file in .pkl format."""
     fn = config["config_file"]
     config.pop("raw", None)  # remove from dict if exists
     config.pop("raw_temp", None)  # remove from dict if exists
@@ -128,14 +126,14 @@ def write_config_file(config):
 
 
 def load_config(fn):
-    """Function to read config file in .pkl format."""
+    """Read config file in .pkl format."""
     with open(fn, "rb") as f:
         config = pickle.load(f)
     return config
 
 
 def select_input_file_paths(config, settings):
-    """Function to select input files."""
+    """Select input files."""
     if config["rerun"] == 0:
         # https://stackoverflow.com/questions/73764314/more-than-one-file-type-in-pysimplegui
         type_EEG = settings["input_file_paths", "type_EEG"]
@@ -156,7 +154,7 @@ def select_input_file_paths(config, settings):
 
 
 def load_config_file():
-    """Function to select and read a previously saved config file in .pkl format."""
+    """Select and read a previously saved config file in .pkl format."""
     txt = settings["load_config_file", "text"]
     config_file = sg.popup_get_file(
         txt,
@@ -177,7 +175,7 @@ def load_config_file():
 
 
 def ask_apply_output_filtering(config):
-    """Function to ask if user wants to filter output."""
+    """Ask if user wants to filter output."""
     txt = "Do you want to also save filtered output?"
     url = "https://mne.tools/stable/auto_tutorials/preprocessing/25_background_filtering.html"
     layout = [
@@ -210,7 +208,7 @@ def ask_apply_output_filtering(config):
 
 
 def ask_update_frequency_bands(config):
-    """Function to ask if user wants to modify frequency bands."""
+    """Ask if user wants to modify frequency bands."""
     txt = "Do you want to modify the frequency bands used for filtering?"
     layout = [
         [sg.Text(txt, enable_events=True, background_color="white")],
@@ -238,7 +236,7 @@ def ask_update_frequency_bands(config):
 
 
 def update_frequency_bands(config):
-    """Function to show and allow user to modify frequency bands."""
+    """Show and allow user to modify frequency bands."""
     tooltip = ""
     layout = [
         [sg.Text("Frequency bands", tooltip=tooltip, font=font, background_color="white")],
@@ -361,9 +359,7 @@ def update_frequency_bands(config):
 
 
 def get_active_frequency_bands(config):
-    """
-    Returns a list of tuples containing the active frequency band pairs based on toggle settings.
-    """
+    """Return a list of tuples containing the active frequency band pairs based on toggle settings."""
     active_bands = []
 
     # Always include delta and theta
@@ -388,7 +384,7 @@ def get_active_frequency_bands(config):
 
 
 def select_output_directory(config):
-    """Function to set Output folder for exported EEG data and log files."""
+    """Set output folder for exported EEG data and log files."""
     if not config["rerun"]:
         working_directory = os.getcwd()
         layout = [
@@ -429,7 +425,7 @@ def select_output_directory(config):
 
 
 def ask_average_ref(config):
-    """Function to ask if user wants to apply average reference to the raw EEG."""
+    """Ask if user wants to apply average reference to the raw EEG."""
     txt = "Do you want to apply average reference to the raw EEG?"
     url = "https://mne.tools/stable/auto_tutorials/preprocessing/55_setting_eeg_reference.html"
     layout = [
@@ -464,7 +460,7 @@ def ask_average_ref(config):
 
 
 def ask_ica_option(config):
-    """Function to ask if user wants to apply ICA."""
+    """Ask if user wants to apply ICA."""
     txt = "Do you want to apply ICA?\nNote: make sure to deselect empty channels"
     url = "https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html"
     layout = [
@@ -501,7 +497,7 @@ def ask_ica_option(config):
 
 
 def ask_beamformer_option(config):
-    """Function to ask if user wants to apply Beamforming."""
+    """Ask if user wants to apply Beamforming."""
     txt = "Do you want to apply Beamforming?"
     url = "https://mne.tools/stable/auto_tutorials/inverse/50_beamformer_lcmv.html"
     layout = [
@@ -538,7 +534,7 @@ def ask_beamformer_option(config):
 
 
 def ask_epoch_selection(config):
-    """Function to ask if user wants to apply apply_epoch_selection."""
+    """Ask if user wants to apply apply_epoch_selection."""
     if config["rerun"] == 0 or (config["rerun"] == 1 and config["apply_epoch_selection"] == 0):
         txt = "Do you want to apply epoch selection?"
         url = "https://mne.tools/stable/generated/mne.Epochs.html#mne.Epochs.plot"
@@ -577,7 +573,7 @@ def ask_epoch_selection(config):
 
 
 def ask_input_file_pattern(config, settings):
-    """Function to ask input_file_patterns."""
+    """Ask input_file_patterns."""
     # note: input_file_patterns read from eeg_processing_settings file
     txt = settings["input_file_patterns", "text"]
     tooltip = settings["input_file_patterns", "tooltip"]
@@ -622,7 +618,7 @@ def ask_input_file_pattern(config, settings):
 
 
 def select_channels_to_be_dropped(in_list):
-    """Function to ask channels to be dropped."""
+    """Ask channels to be dropped."""
     items = in_list
     txt = "Select channels to be dropped (if any)\nNote: for ICA make sure to drop empty or non-EEG channels."
     layout = [
@@ -670,9 +666,9 @@ def select_channels_to_be_dropped(in_list):
 
 
 def implement_channel_corrections(raw, config):
-    """
-    Implements channel corrections at batch level after dropping redundant channels.
-    Returns the raw object with corrected channel names and updated config.
+    """Implement channel corrections at batch level after dropping redundant channels.
+
+    Return the raw object with corrected channel names and updated config.
     """
     if config["rerun"] == 1 and "channel_corrections" in config:
         # Apply saved corrections from previous run
@@ -710,7 +706,7 @@ def implement_channel_corrections(raw, config):
 
 
 def get_expected_channels(montage_name):
-    """Returns the expected channel names for a given montage directly from MNE."""
+    """Return the expected channel names for a given montage directly from MNE."""
     if montage_name == "n/a":
         return []  # Return empty list for file types with built-in channel info
 
@@ -725,8 +721,7 @@ def get_expected_channels(montage_name):
 
 
 def show_channel_correction_window(raw, montage_name, settings):
-    """Shows a window for correcting channel names to match the selected montage."""
-
+    """Show a window for correcting channel names to match the selected montage."""
     # Get expected channel names for the selected montage
     expected_channels = get_expected_channels(montage_name)
     current_channels = raw.ch_names
@@ -867,7 +862,7 @@ def show_channel_correction_window(raw, montage_name, settings):
 
 
 def ask_skip_input_file(config):
-    """Function to ask if user wants to use the current EEG file."""
+    """Ask if user wants to use the current EEG file."""
     ch = sg.popup_yes_no("Is the EEG quality sufficient for further processing?", location=(100, 100), font=font)
     if ch == "No":
         config["skip_input_file"] = 1
@@ -877,7 +872,7 @@ def ask_skip_input_file(config):
 
 
 def ask_sample_frequency(config, settings):
-    """Function to ask sample frequency"""
+    """Ask sample frequency."""
     # note:only asked for .txt files, scope=batch
     # note:sample_frequencies read from config file
     tooltip = "xxx"
@@ -928,7 +923,7 @@ def ask_sample_frequency(config, settings):
 
 
 def ask_epoch_length(config, settings):
-    """Function to ask epoch length."""
+    """Ask epoch length."""
     tooltip = "Enter a number for epoch length between 1 and 100 seconds (int or float)"
     layout = [
         [sg.Text("Enter epoch length in seconds:", tooltip=tooltip, background_color="white")],
@@ -960,7 +955,7 @@ def ask_epoch_length(config, settings):
 
 
 def ask_nr_ica_components(config, settings):
-    """Function to ask number of ICA components."""
+    """Ask number of ICA components."""
     layout = [
         [sg.Text("Enter number of ICA components:", background_color="white")],
         [sg.InputText(default_text=settings["default_ica_components"], key="-ICA_COMPONENTS-")],
@@ -996,7 +991,7 @@ def ask_nr_ica_components(config, settings):
 
 
 def ask_downsample_factor(config, settings):
-    """Function to ask downsample factor."""
+    """Ask downsample factor."""
     url = "https://mne.tools/stable/generated/mne.filter.resample.html"
     layout = [
         [sg.Text("Enter whole number as downsample factor (1 equals no downsampling):", background_color="white")],
@@ -1031,10 +1026,9 @@ def ask_downsample_factor(config, settings):
 
 
 def set_batch_related_names(config):
-    """
-    Function that performs the actions necessary to define all file/folder/path names
-    associated with the current EEG batch that is being processed. These names are fixed for the
-    entire batch.
+    """Perform the actions necessary to define all file/folder/path names associated with the current EEG batch.
+
+    These names are fixed for the entire batch.
     """
     # batch_prefix batch_name batch_output_subdirectory config_file logfile
     today = datetime.today()
@@ -1091,10 +1085,9 @@ def set_batch_related_names(config):
 
 def set_file_output_related_names(config):
     # Scope:in file loop
-    """
-    Function that performs the actions necessary to define all file/folder/path names
-    associated with the current EEG FILE that is being processed. These names change
-    for each file in the batch.
+    """Define all file/folder/path names associated with the current EEG FILE.
+
+    These names change for each file in the batch.
     """
     # strip file_name for use as sub dir
     fn = config["file_name"].replace(" ", "")
@@ -1114,7 +1107,7 @@ def set_file_output_related_names(config):
 
 
 def create_dict():
-    """Function to create initial dict with starting values for processing."""
+    """Create initial dict with starting values for processing."""
     try:
         config = settings  # read defaults from settings file
         return config
@@ -1124,8 +1117,8 @@ def create_dict():
 
 
 def create_spatial_filter(raw_b, config):
-    """
-    Function used to create a spatial filter for the LCMV beamforming method.
+    """Create a spatial filter for the LCMV beamforming method.
+
     The MNE function make_lcmv is used.
     """
     fs_dir = fetch_fsaverage(verbose=True)
@@ -1181,8 +1174,8 @@ def create_spatial_filter(raw_b, config):
 
 
 def create_raw(config, montage, no_montage_files):
-    """
-    Function used to load a raw EEG file using the correct MNE function based on the file type.
+    """Load a raw EEG file using the correct MNE function based on the file type.
+
     Handles .txt files with configurable header structure.
 
     In the settings file you can change:
@@ -1406,7 +1399,7 @@ def create_raw(config, montage, no_montage_files):
 
 
 def update_channels_to_be_dropped(raw, config):
-    """Function to ask channels_to_be_dropped"""
+    """Ask channels_to_be_dropped."""
     channel_names = raw.ch_names
     channels_to_be_dropped = select_channels_to_be_dropped(channel_names)  # ask user to select
     config["channels_to_be_dropped"] = channels_to_be_dropped  # store for rerun function
@@ -1414,9 +1407,7 @@ def update_channels_to_be_dropped(raw, config):
 
 
 def perform_ica(raw, raw_temp, config):
-    """
-    Function to perform ICA on data with bad channels marked but not dropped.
-    """
+    """Perform ICA on data with bad channels marked but not dropped."""
     msg = "Max # components = " + str(config["max_channels"])
     window["-RUN_INFO-"].update(msg + "\n", append=True)
 
@@ -1454,8 +1445,8 @@ def perform_ica(raw, raw_temp, config):
 
 
 def perform_bad_channels_selection(raw, config):
-    """
-    Function that applies MNE plotting to interactively select bad channels and save these to the config.
+    """Apply MNE plotting to interactively select bad channels and save these to the config.
+
     These channels can later be interpolated or dropped depending on the needs.
     """
     msg = "Select bad channels by left-clicking channels"
@@ -1467,9 +1458,9 @@ def perform_bad_channels_selection(raw, config):
 
 
 def plot_power_spectrum(raw, filtered=False):
-    """
-    Function that plots the power spectrum of the separate EEG channels
-    of either the unfiltered or filtered EEG (from 0-60 Hz).
+    """Plot the power spectrum of the separate EEG channels.
+
+    Either of the unfiltered or filtered EEG (from 0-60 Hz).
     """
     fig = raw.compute_psd(fmax=60).plot(picks="eeg", exclude=[])
     axes = fig.get_axes()
@@ -1482,9 +1473,10 @@ def plot_power_spectrum(raw, filtered=False):
 
 
 def perform_temp_down_sampling(raw, config):
-    """
-    Function that down samples the temporary raw EEG to 500 or 512 Hz depending on the sample frequency
-    (power of 2 or not). This should speed up preprocessing.
+    """Downsample the temporary raw EEG.
+
+    Downsampleing to 500 or 512 Hz depending on the sample frequency (power of 2 or not).
+    This should speed up preprocessing.
     """
     temporary_sample_f = 512 if config["sample_frequency"] % 512 == 0 else 500
     print("temp. sample fr:", temporary_sample_f)
@@ -1493,20 +1485,14 @@ def perform_temp_down_sampling(raw, config):
 
 
 def perform_average_reference(raw):
-    """
-    Function that applies a global average reference on the 'eeg' type channels
-    of the raw EEG.
-    """
+    """Appliy a global average reference on the 'eeg' type channels of the raw EEG."""
     raw.set_eeg_reference("average", projection=True, ch_type="eeg")
     raw.apply_proj()
     return raw
 
 
 def perform_beamform(raw, config):
-    """
-    Function that drops bad channels and creates the spatial filter
-    used for LCMV beamforming.
-    """
+    """Drop bad channels and creates the spatial filter used for LCMV beamforming."""
     raw.drop_channels(config[file_name, "bad"])
     msg = "channels left in raw_beamform:" + str(len(raw.ch_names))
     window["-RUN_INFO-"].update(msg + "\n", append=True)
@@ -1516,8 +1502,8 @@ def perform_beamform(raw, config):
 
 
 def perform_epoch_selection(raw, config, sfreq):
-    """
-    Function that performs epoch selection on the raw file.
+    """Perform epoch selection on the raw file.
+
     This function is for use on the temporary raw object.
     """
     events = mne.make_fixed_length_events(raw, duration=(config["epoch_length"]))
@@ -1553,12 +1539,11 @@ def perform_epoch_selection(raw, config, sfreq):
 
 
 def apply_epoch_selection(raw_output, config, sfreq, filtering=False, l_freq=None, h_freq=None):
-    """
-    Function that applies the epoch selection made earlier (either in a previous run
-    or during current pre processing) to the raw EEG used for saving output to file.
+    """Apply the epoch selection made earlierto the raw EEG used for saving output to file.
+
+    Epoch selection either from a previous run or during current pre processing.
     Filtering is optionally applied before applying the epoch selection.
     """
-
     if filtering:
         raw_output = filter_output_raw(raw_output, config, l_freq, h_freq)
 
@@ -1577,10 +1562,10 @@ def apply_epoch_selection(raw_output, config, sfreq, filtering=False, l_freq=Non
 
 
 def filter_output_raw(raw_output, config, l_freq, h_freq):
-    """
-    Applys a FIR bandpass filter to the raw EEG object. If either ICA or Beamforming is also applied,
-    bandpass filtering at 0.5-47 Hz (or broader frequencies) is not performed a second time. The transition
-    band is calculated in a separate function.
+    """Apply a FIR bandpass filter to the raw EEG object.
+
+    If either ICA or Beamforming is also applied, bandpass filtering at 0.5-47 Hz (or broader frequencies) is not
+    performed a second time. The transition band is calculated in a separate function.
     """
     l_freq = float(l_freq)
     h_freq = float(h_freq)
@@ -1606,9 +1591,9 @@ def filter_output_raw(raw_output, config, l_freq, h_freq):
 
 
 def apply_bad_channels(raw, config):
-    """
-    Function that applies bad channels (either from previous run or current pre processing)
-    to raw EEG object used to export the final output.
+    """Apply bad channels to raw EEG object used to export the final output.
+
+    Bad channels either from previous run or current pre processing.
     """
     raw.info["bads"] = config[file_name, "bad"]
     raw.interpolate_bads(reset_bads=True)
@@ -1618,10 +1603,7 @@ def apply_bad_channels(raw, config):
 
 
 def apply_spatial_filter(raw, config, spatial_filter):
-    """
-    Function that applies the spatial filter created earlier to the final
-    raw EEG object used to export the final output.
-    """
+    """Apply spatial filter to the final raw EEG object used to export the final output."""
     desikanlabels = pd.read_csv("DesikanVoxLabels.csv", header=None)
     desikan_channel_names = desikanlabels[0].tolist()
     stc = apply_lcmv_raw(raw, spatial_filter)
@@ -1638,7 +1620,7 @@ def apply_spatial_filter(raw, config, spatial_filter):
 
 
 def save_epoch_data_to_txt(epoch_data, base, scalings=None, filtering=False, l_freq=0.0, h_freq=1000.0):
-    """Function to save an MNE epoch object to txt files."""
+    """Save an MNE epoch object to txt files."""
     l_freq = float(l_freq)
     h_freq = float(h_freq)
     for i in range(len(epoch_data)):
@@ -1664,9 +1646,9 @@ def save_epoch_data_to_txt(epoch_data, base, scalings=None, filtering=False, l_f
 
 
 def calc_filt_transition(cutoff_freq):
-    """
-    Function that returns the FIR filter transition bandwidth based on the cutoff
-    frequency. Below 5 Hz, this is 0.4 (minimum), while above 15 Hz this is 1.5 Hz
+    """Return the FIR filter transition bandwidth based on the cutoff frequency.
+
+    Below 5 Hz, this is 0.4 (minimum), while above 15 Hz this is 1.5 Hz
     (maximum). Below 0.4 Hz, the cutoff frequency is used as transition bandwidth.
     """
     base_transition = min(max(cutoff_freq * 0.1, 0.4), 1.5)
@@ -1674,7 +1656,7 @@ def calc_filt_transition(cutoff_freq):
 
 
 def save_whole_EEG_to_txt(raw_output, config, base, scalings=None, filtering=False, l_freq=0.0, h_freq=1000.0):
-    """Function to slightly process the raw EEG object and export it to one continuous .txt file."""
+    """Slightly process the raw EEG object and export it to one continuous .txt file."""
     l_freq = float(l_freq)
     h_freq = float(h_freq)
 

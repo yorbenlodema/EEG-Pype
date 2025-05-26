@@ -45,7 +45,7 @@ FREQUENCY_BANDS = {
 
 
 def validate_frequency_bands():
-    """Validate FREQUENCY_BANDS configuration"""
+    """Validate FREQUENCY_BANDS configuration."""
     if not FREQUENCY_BANDS:
         raise ValueError("FREQUENCY_BANDS dictionary is empty")
 
@@ -67,15 +67,15 @@ BATCH_SIZE = 10  # Number of subjects to process in parallel
 DEFAULT_THREADS = max(1, int(cpu_count() * 0.7))  # Use 80% of cores, no max limit
 
 
-class MemoryMonitor:
+class MemoryMonitor:  # noqa: D101
     @staticmethod
     def get_memory_usage():
-        """Get current memory usage percentage"""
+        """Get current memory usage percentage."""
         return psutil.Process().memory_percent()
 
     @staticmethod
     def check_memory():
-        """Check if memory usage is too high"""
+        """Check if memory usage is too high."""
         if MemoryMonitor.get_memory_usage() > MAX_MEMORY_PERCENT:
             return True
         return False
@@ -85,15 +85,15 @@ class MemoryMonitor:
         """
         Check if concatenation is likely to exceed memory limits.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         data_size : int
             Size of one epoch in bytes
         num_epochs : int
             Number of epochs to concatenate
 
-        Returns:
-        --------
+        Returns
+        -------
         bool : True if safe to proceed, False if likely to exceed memory
         """
         try:
@@ -122,7 +122,7 @@ class MemoryMonitor:
 
 
 def setup_logging(folder_path):
-    """Setup logging for the current analysis run"""
+    """Set up logging for the current analysis run."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = os.path.join(folder_path, f"eeg_analysis_{timestamp}.log")
 
@@ -144,6 +144,7 @@ def setup_logging(folder_path):
 
 
 def create_gui():
+    """Create the GUI layout for EEG analysis settings."""
     suggested_threads = DEFAULT_THREADS
 
     HEADER_BG = "#2C5784"
@@ -442,7 +443,7 @@ def create_gui():
 
 
 def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_name=None):
-    """Create folder structure with subject subfolders"""
+    """Create folder structure with subject subfolders."""
     folders = {
         "jpe": os.path.join(base_folder, matrix_folder_name, "jpe"),
         "pli": os.path.join(base_folder, matrix_folder_name, "pli"),
@@ -465,9 +466,9 @@ def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_n
 
 
 def extract_freq_band(condition):
-    """
-    Parse the filename or condition string to identify which
-    frequency band it belongs to, based on the FREQUENCY_BANDS config.
+    """Parse the filename or condition string to identify frequency band.
+
+    Based on the FREQUENCY_BANDS config.
 
     Parameters
     ----------
@@ -509,7 +510,7 @@ def is_broadband_condition(condition):
 
 
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
-    """Save connectivity matrix to CSV with proper channel names"""
+    """Save connectivity matrix to CSV with proper channel names."""
     # Create subject subfolder
     subject_folder = os.path.join(folder_path, subject)
     os.makedirs(subject_folder, exist_ok=True)
@@ -528,8 +529,7 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
 
 
 def linear_detrend(data):
-    """Apply linear detrending to each channel"""
-
+    """Apply linear detrending to each channel."""
     return signal.detrend(data, axis=0, type="linear")
 
 
@@ -740,12 +740,14 @@ def calculate_sampen_for_channels(data, m=2):
     """
     Calculate Sample Entropy for each channel using antropy.
 
-    Parameters:
+    Parameters
+    ----------
     data : numpy array (time points × channels)
     m : int
         Embedding dimension (order)
 
-    Returns:
+    Returns
+    -------
     numpy.array : Sample Entropy values for each channel
     """
     n_channels = data.shape[1]
@@ -766,18 +768,20 @@ def calculate_sampen_for_channels(data, m=2):
 
 
 def calculate_apen_for_channels(data, m=1, r=0.25):
-    """
-    Calculate Approximate Entropy for each channel following Pincus 1995,
-    with optimized implementation using vectorization.
+    """Calculate Approximate Entropy for each channel.
 
-    Parameters:
-    data : numpy array (time points × channels)
+    Follows Pincus 1995, with optimized implementation using vectorization.
+
+    Parameters
+    ----------
+    data : numpy array (time points * channels)
     m : int
         Embedding dimension (length of compared runs)
     r : float
         Tolerance (typically 0.25 * std of the data)
 
-    Returns:
+    Returns
+    -------
     numpy.array : Approximate Entropy values for each channel
     """
     n_channels = data.shape[1]
@@ -812,7 +816,8 @@ def _phi_vectorized(x, m, r):
     """
     Vectorized calculation of Φᵐ(r) following Pincus 1995.
 
-    Parameters:
+    Parameters
+    ----------
     x : array
         Time series data
     m : int
@@ -820,7 +825,8 @@ def _phi_vectorized(x, m, r):
     r : float
         Tolerance threshold
 
-    Returns:
+    Returns
+    -------
     float : Φᵐ(r) value
     """
     N = len(x)
@@ -849,9 +855,9 @@ def _phi_vectorized(x, m, r):
 
 
 def calculate_spectral_variability(data_values, fs, window_length=2000):
-    """
-    Calculate spectral variability per channel from concatenated
-    broadband data. Uses FREQUENCY_BANDS for band definitions.
+    """Calculate spectral variability per channel from concatenated broadband data.
+
+    Uses FREQUENCY_BANDS for band definitions.
 
     - Expects pre-concatenated data with channel means already removed.
     - The "broadband" band is assumed to define total power reference.
@@ -944,12 +950,12 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
 
 
 def smooth_spectrum(frequencies, power_spectrum, smoothing_window=5):
-    """Apply moving average smoothing to power spectrum"""
+    """Apply moving average smoothing to power spectrum."""
     return np.convolve(power_spectrum, np.ones(smoothing_window) / smoothing_window, mode="same")
 
 
 def find_peaks(x, y, threshold_ratio=0.5):
-    """Find significant peaks using relative maxima and prominence threshold"""
+    """Find significant peaks using relative maxima and prominence threshold."""
     peak_indices = signal.argrelextrema(y, np.greater)[0]
     prominences = signal.peak_prominences(y, peak_indices)[0]
     threshold = threshold_ratio * np.max(prominences)
@@ -962,7 +968,8 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
     """
     Calculate peak frequency using pre-computed PSD with improved peak detection.
 
-    Parameters:
+    Parameters
+    ----------
     frequencies : numpy array
         Frequency values
     psd : numpy array
@@ -972,7 +979,8 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
     smoothing_window : int
         Window size for smoothing
 
-    Returns:
+    Returns
+    -------
     numpy array: Peak frequencies for each channel
     """
     num_channels = psd.shape[1]
@@ -1027,9 +1035,9 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing
 
 
 def calculate_power_bands(frequencies, psd):
-    """
-    Calculate absolute and relative power using pre-computed PSD
-    for all defined frequency bands in FREQUENCY_BANDS, assuming
+    """Calculate absolute and relative power.
+
+    Uses pre-computed PSD for all defined frequency bands in FREQUENCY_BANDS, assuming
     'broadband' is always available in the dictionary for total power.
 
     Parameters
@@ -1047,7 +1055,6 @@ def calculate_power_bands(frequencies, psd):
         - powers: dict with mean abs/rel power across channels per band
         - channel_powers: dict with channel-level arrays (one entry per band)
     """
-
     broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
     broadband_mask = (frequencies >= broadband_min) & (frequencies <= broadband_max)
 
@@ -1095,7 +1102,8 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
         used_channels (numpy.ndarray, optional): Boolean array indicating which channels are used.
                                                If None, all channels are considered used.
 
-    Returns:
+    Returns
+    -------
         tuple: (dict of MST measures, MST matrix, bool indicating success)
     """
     # Initialize used_channels if not provided
@@ -1228,7 +1236,7 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
 
 
 def calculate_pli(data):
-    """Optimized PLI calculation using vectorization"""
+    """Optimized PLI calculation using vectorization."""
     analytic_signal = hilbert(data, axis=0)
     phases = np.angle(analytic_signal)
 
@@ -1247,7 +1255,7 @@ def calculate_pli(data):
 
 
 def convert_to_integers(data):
-    """Convert to integers using simple truncation"""
+    """Convert to integers using simple truncation."""
     return data.astype(int)
 
 
@@ -1255,7 +1263,8 @@ def calculate_aecc(data, orthogonalize=False, force_positive=True):
     """
     Calculate amplitude envelope correlation with optional orthogonalization.
 
-    Parameters:
+    Parameters
+    ----------
     data : numpy array (time points × channels)
         EEG data array
     orthogonalize : bool, optional
@@ -1263,13 +1272,14 @@ def calculate_aecc(data, orthogonalize=False, force_positive=True):
     force_positive : bool, optional
         Whether to force negative correlations to zero
 
-    Returns:
+    Returns
+    -------
     numpy array (channels × channels)
         AEC(c) correlation matrix
     """
 
     def process_correlation(corr):
-        """Helper function to process correlation based on force_positive setting"""
+        """Process correlation based on force_positive setting."""
         return max(0.0, corr) if force_positive else corr
 
     n_channels = data.shape[1]
@@ -1318,12 +1328,14 @@ def calculate_aecc(data, orthogonalize=False, force_positive=True):
 def calculate_pe(data, n=4, st=1):
     """Calculate Permutation Entropy for each channel.
 
-    Parameters:
+    Parameters
+    ----------
         data : numpy array (time points × channels)
         n : int, embedding dimension
         st : int, time delay (should scale with sampling frequency)
 
-    Returns:
+    Returns
+    -------
         numpy array : PE values for each channel
     """
     sz = data.shape[0]
@@ -1382,14 +1394,15 @@ def find_mirror_patterns(combinations):
 
 
 def is_volume_conduction(pattern1, pattern2, mirrors):
-    """Check for volume conduction"""
+    """Check for volume conduction."""
     return pattern1 == pattern2 or pattern2 == mirrors.get(pattern1, -1)
 
 
 def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
     """Calculate joint permutation entropy with corrected time delay handling.
 
-    Parameters:
+    Parameters
+    ----------
         data : numpy array (time points × channels)
         n : int, embedding dimension
         st : int, time delay (should scale with sampling frequency)
@@ -1442,10 +1455,10 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 
 
 def parse_epoch_filename(filename):
-    """
-    Parse epoch filename to extract components
+    """Parse epoch filename to extract components.
+
     Example: testjulia20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
-    Alternative: 41_Source_level_broadband_Epoch1.txt
+    Alternative: 41_Source_level_broadband_Epoch1.txt.
     """
     # Extract the base name (everything before first underscore)
     base_name = filename.split("_")[0]
@@ -1477,7 +1490,7 @@ def parse_epoch_filename(filename):
 
 
 def process_subject_condition(args):
-    """Process a single subject-condition combination"""
+    """Process a single subject-condition combination."""
     (
         subject,
         condition,
@@ -2245,7 +2258,7 @@ def process_subject_condition(args):
 
 
 def process_batch(batch_args, n_threads):
-    """Process a batch of subjects using multiprocessing with fallback"""
+    """Process a batch of subjects using multiprocessing with fallback."""
     try:
         with Pool(processes=n_threads, maxtasksperchild=1) as pool:
             results = []
@@ -2262,10 +2275,10 @@ def process_batch(batch_args, n_threads):
 
 
 def group_epochs_by_condition(folder_path, folder_ext):
-    """
-    Group epoch files by their base name and condition
+    """Group epoch files by their base name and condition.
+
     Only processes folders containing valid epoch files
-    Returns a dictionary: {base_name: {condition: [epoch_files]}}
+    Returns a dictionary: {base_name: {condition: [epoch_files]}}.
     """
     grouped_files = defaultdict(lambda: defaultdict(list))
 
@@ -2343,7 +2356,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
     return grouped_files
 
 
-def process_all_subjects(
+def process_all_subjects(  # noqa: D103
     grouped_files,
     convert_ints_pe,
     invert,
@@ -2535,7 +2548,6 @@ def save_results_to_excel(
         broadband power columns are skipped.
       - Dynamically uses FREQUENCY_BANDS for non-broadband frequency bands.
     """
-
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # 1) Gather all unique conditions
         all_conditions = set()
@@ -2612,7 +2624,7 @@ def save_results_to_excel(
 
             # Power & Peak Frequency ---
             def is_broadband_condition(condition):
-                """Check if condition matches broadband pattern from FREQUENCY_BANDS"""
+                """Check if condition matches broadband pattern from FREQUENCY_BANDS."""
                 if "broadband" not in FREQUENCY_BANDS:
                     return False
                 pattern = FREQUENCY_BANDS["broadband"]["pattern"]
@@ -2874,6 +2886,7 @@ def save_results_to_excel(
 
 
 def main():
+    """Run the GUI and process EEG data analysis."""
     window = create_gui()
 
     while True:

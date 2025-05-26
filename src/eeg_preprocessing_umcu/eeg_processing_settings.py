@@ -1,8 +1,4 @@
-"""
-Created on Wed May  1 09:56:45 2024
-# x
-@author: hvand
-"""
+"""@author: hvand."""
 
 import matplotlib as mpl
 import mne
