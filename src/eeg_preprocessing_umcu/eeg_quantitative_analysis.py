@@ -47,20 +47,25 @@ FREQUENCY_BANDS = {
 def validate_frequency_bands():
     """Validate FREQUENCY_BANDS configuration."""
     if not FREQUENCY_BANDS:
-        raise ValueError("FREQUENCY_BANDS dictionary is empty")
+        msg = "FREQUENCY_BANDS dictionary is empty"
+        raise ValueError(msg)
 
     for band_name, band_info in FREQUENCY_BANDS.items():
         if "pattern" not in band_info or "range" not in band_info:
-            raise ValueError(f"Band {band_name} missing required keys (pattern, range)")
+            msg = f"Band {band_name} missing required keys (pattern, range)"
+            raise ValueError(msg)
 
         fmin, fmax = band_info["range"]
         if not (isinstance(fmin, (int, float)) and isinstance(fmax, (int, float))):
-            raise ValueError(f"Band {band_name} range values must be numeric")
+            msg = f"Band {band_name} range values must be numeric"
+            raise TypeError(msg)
         if fmin >= fmax:
-            raise ValueError(f"Band {band_name} minimum frequency must be less than maximum")
+            msg = f"Band {band_name} minimum frequency must be less than maximum"
+            raise ValueError(msg)
 
         if not isinstance(band_info["pattern"], str):
-            raise ValueError(f"Band {band_name} pattern must be a string")
+            msg = f"Band {band_name} pattern must be a string"
+            raise TypeError(msg)
 
 
 BATCH_SIZE = 10  # Number of subjects to process in parallel
@@ -577,15 +582,19 @@ def calculate_PSD(
                 Time-frequency representation (only if compute_spectrogram=True)
     """
     if method not in ["multitaper", "welch", "fft"]:
-        raise ValueError(f"Unknown method: {method}")
+        msg = f"Unknown method: {method}"
+        raise ValueError(msg)
 
     # Input validation
     if not isinstance(data, np.ndarray):
-        raise ValueError("Data must be a numpy array")
+        msg = "Data must be a numpy array"
+        raise TypeError(msg)
     if data.ndim != 2:
-        raise ValueError("Data must be 2D array (samples x channels)")
+        msg = "Data must be 2D array (samples x channels)"
+        raise ValueError(msg)
     if fs <= 0:
-        raise ValueError("Sampling frequency must be positive")
+        msg = "Sampling frequency must be positive"
+        raise ValueError(msg)
 
     # Initialize return dictionary
     result = {}
@@ -630,7 +639,8 @@ def calculate_PSD(
     if freq_range is not None:
         fmin, fmax = freq_range
         if not (0 <= fmin < fmax <= fs / 2):
-            raise ValueError(f"Invalid frequency range: {freq_range}")
+            msg = f"Invalid frequency range: {freq_range}"
+            raise ValueError(msg)
 
         freq_mask = (result["frequencies"] >= fmin) & (result["frequencies"] <= fmax)
         result["frequencies"] = result["frequencies"][freq_mask]
@@ -936,8 +946,8 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                     else:
                         cv_values[band_name][channel] = np.nan
 
-            except Exception as ch_err:
-                logger.exception(f"Error processing channel {channel}: {str(ch_err)}")
+            except Exception:
+                logger.exception(f"Error processing channel {channel}")
                 # Fill with NaN for all bands on this channel
                 for band_name in cv_values:
                     cv_values[band_name][channel] = np.nan
@@ -1695,7 +1705,8 @@ def process_subject_condition(args):
                                         if not MemoryMonitor.check_concatenation_safety(
                                             test_data.nbytes, len(epoch_files)
                                         ):
-                                            raise MemoryError("Insufficient memory for safe concatenation of SV epochs")
+                                            msg = "Insufficient memory for safe concatenation of SV epochs"
+                                            raise MemoryError(msg)
                                         del test_data
                                     except Exception:
                                         logger.exception("Error checking memory requirements for SV")
@@ -1891,7 +1902,8 @@ def process_subject_condition(args):
                                     # Concatenate along time axis
                                     data_values = np.concatenate(all_data, axis=0)
                                 else:
-                                    raise ValueError("No valid epochs could be processed")
+                                    msg = "No valid epochs could be processed"
+                                    raise ValueError(msg)
 
                             finally:
                                 # Clean up interim data
@@ -2912,9 +2924,11 @@ def main():
                     welch_window_ms = float(values["-WELCH_WINDOW-"])
                     welch_overlap = float(values["-WELCH_OVERLAP-"])
                     if welch_window_ms <= 0:
-                        raise ValueError("Welch window length must be greater than 0")
+                        msg = "Welch window length must be greater than 0"
+                        raise ValueError(msg)
                     if not 0 <= welch_overlap <= 100:
-                        raise ValueError("Welch overlap must be between 0 and 100")
+                        msg = "Welch overlap must be between 0 and 100"
+                        raise ValueError(msg)
                 except ValueError:
                     sg.popup_error("Invalid Welch parameters")
                     continue
@@ -2931,7 +2945,8 @@ def main():
             try:
                 n_threads = int(values["-THREADS-"])
                 if n_threads < 1 or n_threads > cpu_count():
-                    raise ValueError(f"Number of threads must be between 1 and {cpu_count()}")
+                    msg = f"Number of threads must be between 1 and {cpu_count()}"
+                    raise ValueError(msg)
             except ValueError:
                 sg.popup_error("Invalid number of threads")
                 continue
@@ -2969,7 +2984,12 @@ def main():
                 try:
                     jpe_st = int(values["-JPE_ST-"])
                     if jpe_st < 1:
-                        raise ValueError("Time step must be greater than 0")
+                        msg = "Time step must be greater than 0"
+                        raise ValueError(msg)
+                        # TODO: raising and immediately catching it seems redundant.
+                        # Does it have to happen like this for PySimpleGUI to work properly?
+                        # Simpler would be: `if condition: sg.popup_error("Message")`
+                        # check throughout; if changed then de-ignore TRY301 in ruff settings
                 except ValueError:
                     sg.popup_error("Invalid time step value")
                     continue
@@ -2978,7 +2998,8 @@ def main():
                 try:
                     power_fs = float(values["-POWER_FS-"])
                     if power_fs <= 0:
-                        raise ValueError("Sampling frequency must be greater than 0")
+                        msg = "Sampling frequency must be greater than 0"
+                        raise ValueError(msg)
                 except ValueError:
                     sg.popup_error("Invalid sampling frequency value")
                     continue
@@ -2990,9 +3011,11 @@ def main():
                         peak_min = float(values["-PEAK_MIN-"])
                         peak_max = float(values["-PEAK_MAX-"])
                         if peak_min >= peak_max:
-                            raise ValueError("Minimum frequency must be less than maximum")
+                            msg = "Minimum frequency must be less than maximum"
+                            raise ValueError(msg)
                         if peak_min < 0 or peak_max > (power_fs / 2):
-                            raise ValueError(f"Frequency range must be between 0 and {power_fs / 2} Hz")
+                            msg = f"Frequency range must be between 0 and {power_fs / 2} Hz"
+                            raise ValueError(msg)
                     except ValueError:
                         sg.popup_error("Invalid peak frequency range")
                         continue
@@ -3003,7 +3026,8 @@ def main():
                     try:
                         sampen_m = int(values["-SAMPEN_M-"])
                         if sampen_m < 1:
-                            raise ValueError("Order m must be greater than 0")
+                            msg = "Order m must be greater than 0"
+                            raise ValueError(msg)
                     except ValueError:
                         sg.popup_error("Invalid SampEn order parameter")
                         continue
@@ -3014,12 +3038,14 @@ def main():
                 if values["-CALC_APEN-"]:
                     try:
                         apen_m = int(values["-APEN_M-"])
-                        if apen_m < 1:
-                            raise ValueError("Order m must be greater than 0")
+                        if apen_m <= 0:
+                            msg = "Order m must be greater than 0"
+                            raise ValueError(msg)
 
                         apen_r = float(values["-APEN_R-"])
                         if apen_r <= 0:
-                            raise ValueError("Tolerance r must be greater than 0")
+                            msg = "Tolerance r must be greater than 0"
+                            raise ValueError(msg)
                     except ValueError:
                         sg.popup_error("Invalid ApEn parameter")
                         continue
@@ -3030,7 +3056,8 @@ def main():
                     try:
                         sv_window = int(values["-SV_WINDOW-"])
                         if sv_window < 100:
-                            raise ValueError("Window length must be at least 100ms")
+                            msg = "Window length must be at least 100ms"
+                            raise ValueError(msg)
                     except ValueError:
                         sg.popup_error("Invalid spectral variability window")
                         continue

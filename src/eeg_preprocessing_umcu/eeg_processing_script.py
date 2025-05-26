@@ -1349,7 +1349,8 @@ def create_raw(config, montage, no_montage_files):
         try:
             df = df.astype(float)
         except ValueError as e:
-            raise ValueError(f"Non-numeric values found in the data. Please check your file format. Error: {e}")
+            msg = "Non-numeric values found in the data. Please check your file format."
+            raise ValueError(msg) from e
 
         samples = df.T * 1e-6  # Scaling from µV to V
         raw = mne.io.RawArray(samples, info)
