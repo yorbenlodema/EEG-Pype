@@ -1,0 +1,79 @@
+target-version = "py39"
+line-length = 120
+output-format = "concise"
+
+[lint]
+pydocstyle.convention = "numpy"
+select = ["ALL"]
+ignore = [
+    # Unwanted in this code base
+    "G004", # logging-f-string
+    "PTH", # use of pathlib
+    "ANN", # type annotations missing
+    "SIM108", # use ternary operator
+    "PD901", # calling dataframes `df`
+    "PERF203", # use of exceptions in loops
+    "PERF401", # use list.extend
+    "FA100", # future annotations
+    "TRY300", # return into else block
+    # consider fixing these
+    "TRY301", # try without except
+    "N", # use of capitals in variable/function names
+    "PLR091", # too many branches/statements/arguments
+    "C901",    # too high complexity
+    "T201", # print statements
+    "E722", # do not use bare except
+    "BLE001", # use of bare except
+    "DTZ", # non-UTC timezone in datetime
+    "W605", # invalid escape sequence
+    # Unwanted
+    "FBT",    # Boolean function arguments
+    "ANN003", # Missing type annotation for **{name} (e.g. **kwargs)
+    "ANN204", # Missing return type annotation for special (dunder) method
+    "PT011",  # pytest.raises without error messages
+    "TD",     # TODO formatting
+    "FIX",    # Resolve FIXME, TODO, XXX
+    "EXE002", # Executable but no shebang
+    "COM812", # Trailing commas (clashes with formatter)
+    "UP038",  # Use X | Y instead of (X, Y) in isinstance()
+    # Unneeded docstrings
+    "D100",   # Missing module docstring
+    "D104",   # Missing public package docstring
+    "D105",   # Missing docstring in magic method
+    "D107",   # Missing docstring in `__init__`
+    "CPY001", # Missing copyright notice
+    # preview ignores
+    "PLR0917", # Too many positional arguments
+    "PLR0914", # Too many local arguments
+    "DOC201",  # Return is not documented in docstring
+    "DOC501",  # Exception is not documented in docstring
+]
+
+# Autofix settings
+fixable = ["ALL"]
+unfixable = [
+    "F401",   # unused imports (should not disappear while editing)
+    "ERA001", # commented out code
+    "B905",   # zip-without-explicit-strict
+    "T201",   # print-statements
+    "RUF100", # remove unused noqa (preferable to control when this happens?)
+]
+extend-safe-fixes = [
+    "D415",   # First line should end with a period, question mark, or exclamation point
+    "D300",   # Use triple double quotes `"""`
+    "D200",   # One-line docstring should fit on one line
+    "TC",     # Format type checking only imports
+    "ISC001", # Implicitly concatenated strings on a single line
+    "EM",     # Exception message variables
+    "RUF013", # Implicit Optional
+    "B006",   # Mutable default argument
+]
+
+[lint.flake8-quotes]
+inline-quotes = "double"
+docstring-quotes = "double"
+multiline-quotes = "double"
+
+
+[format]
+quote-style = "double"

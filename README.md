@@ -1,6 +1,6 @@
 ## What is this software?
 
-With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code. 
+With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code.
 
 The software is currently able to:
 - Open raw EEG files of type .txt, .bdf, .edf, .eeg and .fif.
@@ -13,31 +13,43 @@ The software is currently able to:
 - Apply beamformer source reconstruction to the EEG (standard MNE LCMV beamformer with standard head model).
 - Down sample the file to a lower sample frequency by specifying a downsample factor (like a foctor of 4: from 2048 Hz to 512 Hz for example).
 - Perform interactive visual epoch selection.
-- Perform filtering in different frequency bands and broadband output. These bands can be changed for the current batch in the GUI or more permanently in the settings file (see under tips and issues).
+- Perform filtering in different frequency bands and broadband output. These bands can be changed for the current batch in the GUI or more permanently in the settings file (see under tips and issues). The EEGs are filtered before cutting epochs, reducing edge artifacts.
+- Split alpha and beta bands into sub-bands (alpha1/alpha2 and beta1/beta2) for more detailed frequency analysis.
 - After performing analyses on a batch, rerun the batch with preservation of channel and epoch selection. To do this, select the previously created .pkl file.
 - Log the chosen settings and performed analyses steps in a log file.
+- Correct channel names to match expected montage names through an interactive find/replace interface.
+
 
 The software is not (yet) able to:
 - Analyse task EEG data.
-- Calculate quantitative features on the output epochs (coming in the near future).
 - Open EEG files with data types not mentioned previously (you can put this in a new GitHub issue if you need to load another EEG filetype).
 
-In addition, we later added a quantitative analysis script, which allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing software. See below for more details.  
+In addition, we later added a quantitative analysis script, which allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing software. See below for more details.
 
 ### Tips for use and known issues
 When choosing the settings for the current analysis batch, most windows contain a "more info" button which will take you to an appropriate MNE documentation page.
 
 When no raw EEG files show up in the file selection window, please choose a different file type in the dropdown menu on the right (it might be stuck on only showing .txt files for instance).
 
-For the bad channel selection (for interpolation), you can select bad channels by clicking the channel names on the left side of the plot. The deselected (grey) channels will be interpolated. For ICA, this works the same but then artefact-containing components can be deselected in the graph plot of the ICA. These components will be filtered out of the EEG. For interactive epoch selection, epochs of insufficient quality can be deselected by clicking anywhere on the epoch, which will then turn red. This means the epoch will not be saved. 
+For the bad channel selection (for interpolation), you can select bad channels by clicking the channel names on the left side of the plot. The deselected (grey) channels will be interpolated. For ICA, this works the same but then artefact-containing components can be deselected in the graph plot of the ICA. These components will be filtered out of the EEG. For interactive epoch selection, epochs of insufficient quality can be deselected by clicking anywhere on the epoch, which will then turn red. This means the epoch will not be saved.
 
 If the program glitches or stops working, we found that it works best to stop the Python process, for instance by clicking the red stop button or restarting the kernel in Spyder IDE or similar.
 
 There is currently an unresolved problem where removing multiple ICA components and/or interpolating channels can result in a data rank that is too low to caculate the beamforming solution. See [here](https://mailman.science.ru.nl/pipermail/fieldtrip/2014-March/033565.html) for an explanation of this problem.
 
-When using Spyder IDE to run the program (like we do), initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
+When using Spyder IDE to run the program, initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
 
-It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script. 
+It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script.
+
+When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see wether the channel names match the MNE montage.
+
+When plotting the EEG channels side by side, note that ECG channels should be purple if recognized correctly:
+![SCR-20250423-iyif](https://github.com/user-attachments/assets/b43621ec-3d84-44e4-a404-b1b499e9fe4d)
+If this is not the case, these channels might be included in operations like average referencing.
+
+The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
+
+There is currently no solution for the situation where EEG files that are loaded simultaneously (in the same batch) have different channel names with respect to channel dropping. As long as you do not drop any channels (drop at the batch level, not interpolate) this is no problem, and you should even be able to rename the channel names separately per file. However, the batch-level channel drop functionality expects the same channel names between files, breaking the execution of the script when this is not the case.
 
 ## Installation
 
@@ -148,8 +160,12 @@ python -m pip install .
 ### Overview
 The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs. Different from the preprocessing software, this program is best run from the command line due to compatibility issues of the parallel processing implementation with IDEs like Spyder. To do this, simply change directory to the folder containing the Python script and use (similar to): ```python eeg_quantitative_analysis.py```. Then, the GUI should load automatically.
 
+Depending on your setup, it is probably advisable to not run too many EEGs in one go in the analysis script, since this can cause problems (probably memory-related) when saving the analysis output. Amounts of around 100-200 EEGs should work.
+
+In the GUI, the number of threads should be specified. This number means that the calculations will be spread over multiple CPU cores. It is advisable to leave one, or even two, of your available cores free for other tasks your computer has to perform to prevent freezes. If the script runs into memory problems, especially when calculating entropy measures, it can be necessary to lower the number of threads the analyses run on.
+
 ### Data Requirements
-- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script.
+- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script. This extension is specified in the "Folder extension" field.
 - Each folder should contain epoch files in .txt format.
 - Epoch files should follow the naming convention: `[subject]_[level]_level_[frequency]Hz_Epoch_[number].txt`.
 - Data can be loaded with or without headers:
@@ -190,7 +206,7 @@ The EEG Quantitative Analysis Tool is a GUI-based application for calculating va
    - Similar to SampEn but with self-matches.
    - Options:
      - Order m: Pattern length (typically 1 or 2).
-     - Tolerance r: Similarity criterion (typically 0.1-0.25 × SD).
+     - Tolerance r: Similarity criterion (typically 0.1-0.25 * SD).
 
 #### Spectral Analysis Details
 1. **Peak Frequency Analysis**
@@ -213,6 +229,53 @@ The EEG Quantitative Analysis Tool is a GUI-based application for calculating va
 - Leaf fraction: Proportion of nodes with degree 1.
 - Tree hierarchy: Balance between network integration and overload prevention.
 - Additional measures: Diameter, kappa (degree divergence), mean edge weight.
+
+### Spectral Analysis Methods
+The tool now supports multiple methods for spectral analysis:
+1. Multitaper Method (Default)
+- Provides optimal frequency resolution.
+- Best for detecting narrow-band signals.
+- Uses MNE's implementation.
+- Parameters automatically optimized.
+
+2. Welch's Method
+- Reduces noise through averaging.
+- Configurable parameters:
+   - Window length (ms)
+   - Overlap percentage
+- Better for smooth spectra.
+- Good for longer recordings.
+
+3. FFT Method
+- Direct Fast Fourier Transform.
+- Uses Hanning window.
+- Fastest computation.
+
+Method selection and parameters can be configured through the GUI:
+- Choose method from dropdown.
+- Welch parameters appear when selected:
+   - Window length in milliseconds (default: 1000ms)
+   - Overlap percentage (default: 50%)
+
+The selected method affects (this PSD method is used for):
+- Power band calculations.
+- Peak frequency detection.
+
+### Custom Frequency Bands
+The tool allows customization of frequency bands used for both epoch recognition and spectral analysis. Bands are configured in the FREQUENCY_BANDS dictionary in the main script. Please be careful when changing these since doing so can easily break a lot of the logic in the code.
+
+Each band requires:
+
+- A unique name (e.g., "delta", "theta").
+- Pattern: Regular expression to match band names in epoch filenames.
+- Range: Tuple of (min_freq, max_freq) in Hz for calculations.
+
+Notes:
+
+- The "broadband" band is required and used for power/spectral variability calculations. You can also used unfiltered epochs for this though you should make sure they are recognized as broadband.
+- You can add custom bands following the same format.
+- Patterns should match your epoch filename format.
+- Ranges must be within Nyquist frequency (sampling_rate/2).
 
 ### Output Options
 1. **Excel Results**
