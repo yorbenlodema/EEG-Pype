@@ -842,7 +842,7 @@ def create_spatial_filter(raw_b,config):
     Function used to create a spatial filter for the LCMV beamforming method. 
     The MNE function make_lcmv is used.
     '''
-    fs_dir = fetch_fsaverage(verbose=True)
+    fs_dir = fetch_fsaverage(verbose=True) 
     subject = "fsaverage"
     trans = "fsaverage"
     # Loading boundary-element model
@@ -1374,7 +1374,7 @@ while True:# @noloop remove
                     raw, config = update_channels_to_be_dropped(raw, config)
                     config['channels_to_be_dropped_selected'] = 1
                 
-                # Only drop non-EEG channels, not bad channels
+                # Entirely drop excluded channels
                 raw.drop_channels(config['channels_to_be_dropped'])
                                 
                 # Temporary raw file to work with during preprocessing
@@ -1385,7 +1385,7 @@ while True:# @noloop remove
                 raw_temp.filter(l_freq=0.5, h_freq=47, l_trans_bandwidth=0.4,
                                 h_trans_bandwidth=1.5, picks='eeg')
                 
-                # Mark bad channels (but don't interpolate yet)
+                # Mark bad channels
                 if config['rerun'] == 1:
                     raw_temp.info['bads'] = config[file_name, 'bad']
                     

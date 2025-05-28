@@ -312,7 +312,7 @@ def extract_freq_band(condition):
         pattern = band_info['pattern']
         # Add Hz to pattern if not already included
         if not pattern.endswith('Hz'):
-            search_pattern = f"{pattern}(\s*Hz)?"
+            search_pattern = f"{pattern}(\\s*Hz)?"
         else:
             search_pattern = pattern
         if re.search(search_pattern, condition, re.IGNORECASE):
@@ -765,9 +765,44 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
         logging.error(f"Error in spectral variability calculation: {str(e)}")
         return None
 
-def smooth_spectrum(frequencies, power_spectrum, smoothing_window=5):
-    """Apply moving average smoothing to power spectrum"""
-    return np.convolve(power_spectrum, np.ones(smoothing_window)/smoothing_window, mode='same')
+# def smooth_spectrum(frequencies, power_spectrum, smoothing_window=5):
+#     """Apply moving average smoothing to power spectrum"""
+#     return np.convolve(power_spectrum, np.ones(smoothing_window)/smoothing_window, mode='same')
+
+def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, polyorder: int = 2) -> np.ndarray:
+    """
+    Apply Savitzky-Golay smoothing to a power spectrum.
+
+    Parameters:
+    -----------
+    power_spectrum : np.ndarray
+        The 1D power spectrum array to be smoothed.
+    window_length : int, optional
+        The length of the filter window (i.e., the number of coefficients).
+        Must be a positive odd integer. Default is 5.
+    polyorder : int, optional
+        The order of the polynomial used to fit the samples.
+        Must be less than window_length. Default is 2.
+
+    Returns:
+    --------
+    np.ndarray
+        The smoothed power spectrum.
+    """
+    if window_length % 2 == 0:
+        raise ValueError("window_length must be an odd integer.")
+    if polyorder >= window_length:
+        raise ValueError("polyorder must be less than window_length.")
+    if len(power_spectrum) < window_length:
+        # Not enough data points to apply the filter with the given window length.
+        # You might return the original spectrum, or raise an error, or apply a shorter filter.
+        # For now, let's return the original spectrum if it's too short.
+        # Consider logging a warning here if you have a logging setup.
+        # print(f"Warning: Power spectrum length ({len(power_spectrum)}) is less than window_length ({window_length}). Returning original spectrum.")
+        return power_spectrum
+
+    smoothed_spectrum = signal.savgol_filter(power_spectrum, window_length, polyorder)
+    return smoothed_spectrum
 
 def find_peaks(x, y, threshold_ratio=0.5):
     """Find significant peaks using relative maxima and prominence threshold"""
@@ -778,71 +813,132 @@ def find_peaks(x, y, threshold_ratio=0.5):
     
     return x[significant_peaks], y[significant_peaks]
 
-def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing_window=5):
-    """
-    Calculate peak frequency using pre-computed PSD with improved peak detection.
+# def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), smoothing_window=5):
+#     """
+#     Calculate peak frequency using pre-computed PSD with improved peak detection.
     
-    Parameters:
-    frequencies : numpy array
-        Frequency values
-    psd : numpy array
-        Power spectral density (frequencies × channels)
-    freq_range : tuple
-        Frequency range to search for peaks (min_freq, max_freq)
-    smoothing_window : int
-        Window size for smoothing
+#     Parameters:
+#     frequencies : numpy array
+#         Frequency values
+#     psd : numpy array
+#         Power spectral density (frequencies × channels)
+#     freq_range : tuple
+#         Frequency range to search for peaks (min_freq, max_freq)
+#     smoothing_window : int
+#         Window size for smoothing
         
-    Returns:
-    numpy array: Peak frequencies for each channel
+#     Returns:
+#     numpy array: Peak frequencies for each channel
+#     """
+#     num_channels = psd.shape[1]
+#     peak_frequencies = np.zeros(num_channels)
+    
+#     # Create frequency mask
+#     freq_mask = (frequencies >= freq_range[0]) & (frequencies <= freq_range[1])
+#     freq_range_idx = np.where(freq_mask)[0]
+    
+#     if len(freq_range_idx) == 0:
+#         logging.warning(f"No frequencies found in range {freq_range[0]}-{freq_range[1]} Hz")
+#         return np.full(num_channels, np.nan)
+    
+#     # Get masked frequencies and PSD
+#     frequencies_masked = frequencies[freq_mask]
+#     psd_masked = psd[freq_mask, :]
+    
+#     for channel in range(num_channels):
+#         try:
+#             # Get channel-specific PSD
+#             channel_psd = psd_masked[:, channel]
+            
+#             # Apply smoothing
+#             smoothed_psd = smooth_spectrum(frequencies_masked, channel_psd, smoothing_window)
+            
+#             # Find all peaks
+#             peak_indices = signal.find_peaks(smoothed_psd)[0]
+            
+#             if len(peak_indices) == 0:
+#                 # No peaks found
+#                 peak_frequencies[channel] = np.nan
+#                 continue
+            
+#             # Calculate peak properties
+#             peak_props = signal.peak_prominences(smoothed_psd, peak_indices)
+#             prominences = peak_props[0]
+            
+#             # Sort peaks by prominence
+#             sorted_peak_indices = peak_indices[np.argsort(-prominences)]
+            
+#             if len(sorted_peak_indices) > 0:
+#                 # Get the frequency of the most prominent peak
+#                 peak_frequencies[channel] = frequencies_masked[sorted_peak_indices[0]]
+#             else:
+#                 peak_frequencies[channel] = np.nan
+                
+#         except Exception as e:
+#             logging.error(f"Error calculating peak frequency for channel {channel}: {str(e)}")
+#             peak_frequencies[channel] = np.nan
+            
+#     return peak_frequencies
+
+def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), sg_window_length=5, sg_polyorder=2):
+    """
+    Calculate peak frequency using pre-computed PSD with Savitzky-Golay smoothing.
     """
     num_channels = psd.shape[1]
     peak_frequencies = np.zeros(num_channels)
-    
-    # Create frequency mask
+
     freq_mask = (frequencies >= freq_range[0]) & (frequencies <= freq_range[1])
     freq_range_idx = np.where(freq_mask)[0]
-    
+
     if len(freq_range_idx) == 0:
         logging.warning(f"No frequencies found in range {freq_range[0]}-{freq_range[1]} Hz")
         return np.full(num_channels, np.nan)
-    
-    # Get masked frequencies and PSD
+
     frequencies_masked = frequencies[freq_mask]
     psd_masked = psd[freq_mask, :]
-    
+
     for channel in range(num_channels):
         try:
-            # Get channel-specific PSD
             channel_psd = psd_masked[:, channel]
-            
-            # Apply smoothing
-            smoothed_psd = smooth_spectrum(frequencies_masked, channel_psd, smoothing_window)
-            
-            # Find all peaks
+
+            # Apply Savitzky-Golay smoothing
+            smoothed_psd = smooth_spectrum_savgol(channel_psd,
+                                                  window_length=sg_window_length,
+                                                  polyorder=sg_polyorder)
+
+            # Find all peaks (using the basic signal.find_peaks for initial candidates)
             peak_indices = signal.find_peaks(smoothed_psd)[0]
-            
+
             if len(peak_indices) == 0:
-                # No peaks found
                 peak_frequencies[channel] = np.nan
                 continue
-            
-            # Calculate peak properties
-            peak_props = signal.peak_prominences(smoothed_psd, peak_indices)
-            prominences = peak_props[0]
-            
+
+            # Calculate peak properties (prominences) for these peaks
+            # Ensure smoothed_psd is not empty and peak_indices are valid
+            if smoothed_psd.size > 0 and peak_indices.size > 0 and np.all(peak_indices < len(smoothed_psd)):
+                peak_props = signal.peak_prominences(smoothed_psd, peak_indices)
+                prominences = peak_props[0]
+            else:
+                peak_frequencies[channel] = np.nan # Not enough data or invalid indices for prominence
+                continue
+
             # Sort peaks by prominence
-            sorted_peak_indices = peak_indices[np.argsort(-prominences)]
-            
+            if prominences.size > 0:
+                sorted_peak_indices = peak_indices[np.argsort(-prominences)]
+            else:
+                peak_frequencies[channel] = np.nan # No prominences to sort by
+                continue
+
             if len(sorted_peak_indices) > 0:
                 # Get the frequency of the most prominent peak
                 peak_frequencies[channel] = frequencies_masked[sorted_peak_indices[0]]
             else:
                 peak_frequencies[channel] = np.nan
-                
+
         except Exception as e:
             logging.error(f"Error calculating peak frequency for channel {channel}: {str(e)}")
             peak_frequencies[channel] = np.nan
-            
+
     return peak_frequencies
 
 def calculate_power_bands(frequencies, psd):
@@ -1215,7 +1311,6 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
     data = np.asarray(data)
     sz = data.shape[0]
     combinations = list(itertools.permutations(np.arange(0,n), n))
-    #mirrors = find_mirror_patterns(combinations, n-1)
     
     mirrors = find_mirror_patterns(combinations)
     
