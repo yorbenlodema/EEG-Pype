@@ -1776,22 +1776,25 @@ while True:  # @noloop remove
 
                 if config["rerun"] == 0 and config["channels_to_be_dropped_selected"] == 0:
                     raw, config = update_channels_to_be_dropped(raw, config)
-                    config["channels_to_be_dropped_selected"] = 1
 
-                # Only drop non-EEG channels, not bad channels
-                raw.drop_channels(config["channels_to_be_dropped"])
+                    config['channels_to_be_dropped_selected'] = 1
+                
+                # Entirely drop excluded channels
+                raw.drop_channels(config['channels_to_be_dropped'])
+                                
 
                 # Temporary raw file to work with during preprocessing
                 raw_temp = raw.copy()
 
                 plot_power_spectrum(raw_temp, filtered=False)
 
-                raw_temp.filter(l_freq=0.5, h_freq=47, l_trans_bandwidth=0.4, h_trans_bandwidth=1.5, picks="eeg")
-
-                # Mark bad channels (but don't interpolate yet)
+                raw_temp.filter(l_freq=0.5, h_freq=47, l_trans_bandwidth=0.4,
+                                h_trans_bandwidth=1.5, picks="eeg")
+                
+                # Mark bad channels
                 if config["rerun"] == 1:
                     raw_temp.info["bads"] = config[file_name, "bad"]
-
+                    
                 raw_temp, config = perform_bad_channels_selection(raw_temp, config)
 
                 # Calculate max channels before any interpolation
