@@ -1,6 +1,6 @@
 ## What is this software?
 
-With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code. 
+With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code.
 
 The software is currently able to:
 - Open raw EEG files of type .txt, .bdf, .edf, .eeg and .fif.
@@ -24,14 +24,14 @@ The software is not (yet) able to:
 - Analyse task EEG data.
 - Open EEG files with data types not mentioned previously (you can put this in a new GitHub issue if you need to load another EEG filetype).
 
-In addition, we later added a quantitative analysis script, which allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing software. See below for more details.  
+In addition, we later added a quantitative analysis script, which allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing software. See below for more details.
 
 ### Tips for use and known issues
 When choosing the settings for the current analysis batch, most windows contain a "more info" button which will take you to an appropriate MNE documentation page.
 
 When no raw EEG files show up in the file selection window, please choose a different file type in the dropdown menu on the right (it might be stuck on only showing .txt files for instance).
 
-For the bad channel selection (for interpolation), you can select bad channels by clicking the channel names on the left side of the plot. The deselected (grey) channels will be interpolated. For ICA, this works the same but then artefact-containing components can be deselected in the graph plot of the ICA. These components will be filtered out of the EEG. For interactive epoch selection, epochs of insufficient quality can be deselected by clicking anywhere on the epoch, which will then turn red. This means the epoch will not be saved. 
+For the bad channel selection (for interpolation), you can select bad channels by clicking the channel names on the left side of the plot. The deselected (grey) channels will be interpolated. For ICA, this works the same but then artefact-containing components can be deselected in the graph plot of the ICA. These components will be filtered out of the EEG. For interactive epoch selection, epochs of insufficient quality can be deselected by clicking anywhere on the epoch, which will then turn red. This means the epoch will not be saved.
 
 If the program glitches or stops working, we found that it works best to stop the Python process, for instance by clicking the red stop button or restarting the kernel in Spyder IDE or similar.
 
@@ -39,7 +39,7 @@ There is currently an unresolved problem where removing multiple ICA components 
 
 When using Spyder IDE to run the program, initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
 
-It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script. 
+It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script.
 
 When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see wether the channel names match the MNE montage.
 
@@ -165,7 +165,7 @@ Depending on your setup, it is probably advisable to not run too many EEGs in on
 In the GUI, the number of threads should be specified. This number means that the calculations will be spread over multiple CPU cores. It is advisable to leave one, or even two, of your available cores free for other tasks your computer has to perform to prevent freezes. If the script runs into memory problems, especially when calculating entropy measures, it can be necessary to lower the number of threads the analyses run on.
 
 ### Data Requirements
-- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script. This extension is specified in the "Folder extension" field. 
+- Input data should be organized in folders ending with a specified extension (e.g., 'bdf', 'edf'). This should be the standard output from the preprocessing script. This extension is specified in the "Folder extension" field.
 - Each folder should contain epoch files in .txt format.
 - Epoch files should follow the naming convention: `[subject]_[level]_level_[frequency]Hz_Epoch_[number].txt`.
 - Data can be loaded with or without headers:
@@ -206,7 +206,7 @@ In the GUI, the number of threads should be specified. This number means that th
    - Similar to SampEn but with self-matches.
    - Options:
      - Order m: Pattern length (typically 1 or 2).
-     - Tolerance r: Similarity criterion (typically 0.1-0.25 × SD).
+     - Tolerance r: Similarity criterion (typically 0.1-0.25 * SD).
 
 #### Spectral Analysis Details
 1. **Peak Frequency Analysis**
