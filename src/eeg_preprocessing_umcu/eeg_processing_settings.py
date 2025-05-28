@@ -20,7 +20,6 @@ my_image = sg.Image("UMC_logo.png", subsample=2, pad=(0, 0), background_color="#
 
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
-filter_settings = {}
 
 # script run defaults
 settings["default_epoch_length"] = 8
@@ -75,9 +74,6 @@ settings["montage", ".edf_bio64"] = "biosemi64"
 settings["montage", ".edf_bio128"] = "biosemi128"
 settings["montage", ".edf_10-20"] = "standard_1020"
 settings["montage", ".edf_GSN-Hydrocel_64"] = "GSN-HydroCel-64_1.0"
-# settings['montage',".eeg"] = "n/a"  #noqa: ERA001
-# settings['montage',".fif"] = "n/a"  #noqa: ERA001
-# settings['montage',".cnt"] = "standard_1005"  #noqa: ERA001
 
 settings["input_file_pattern", ".txt_bio32"] = "*.txt"
 settings["input_file_pattern", ".txt_bio64"] = "*.txt"
@@ -119,27 +115,31 @@ settings["frequency_bands"] = (
 
 # Default filter settings
 settings["cut_off_frequency", "delta_low"] = 0.5
-settings["cut_off_frequency", "delta_high"] = 4
-settings["cut_off_frequency", "theta_low"] = 4
-settings["cut_off_frequency", "theta_high"] = 8
-settings["cut_off_frequency", "alpha_low"] = 8
-settings["cut_off_frequency", "alpha_high"] = 13
-settings["cut_off_frequency", "beta1_low"] = 13
-settings["cut_off_frequency", "beta1_high"] = 20
-settings["cut_off_frequency", "beta2_low"] = 20
-settings["cut_off_frequency", "beta2_high"] = 30
+settings["cut_off_frequency", "delta_high"] = 4.0
+settings["cut_off_frequency", "theta_low"] = 4.0
+settings["cut_off_frequency", "theta_high"] = 8.0
+settings["cut_off_frequency", "alpha_low"] = 8.0
+settings["cut_off_frequency", "alpha_high"] = 13.0
+settings["cut_off_frequency", "beta1_low"] = 13.0
+settings["cut_off_frequency", "beta1_high"] = 20.0
+settings["cut_off_frequency", "beta2_low"] = 20.0
+settings["cut_off_frequency", "beta2_high"] = 30.0
 settings["cut_off_frequency", "broadband_low"] = 0.5
-settings["cut_off_frequency", "broadband_high"] = 47
+settings["cut_off_frequency", "broadband_high"] = 47.0
 
-settings["cut_off_frequency", "alpha1_low"] = 8
-settings["cut_off_frequency", "alpha1_high"] = 10
-settings["cut_off_frequency", "alpha2_low"] = 10
-settings["cut_off_frequency", "alpha2_high"] = 13
-settings["cut_off_frequency", "beta_low"] = 13
-settings["cut_off_frequency", "beta_high"] = 30
+settings["cut_off_frequency", "alpha1_low"] = 8.0
+settings["cut_off_frequency", "alpha1_high"] = 10.0
+settings["cut_off_frequency", "alpha2_low"] = 10.0
+settings["cut_off_frequency", "alpha2_high"] = 13.0
+settings["cut_off_frequency", "beta_low"] = 13.0
+settings["cut_off_frequency", "beta_high"] = 30.0
 
 settings["use_split_alpha"] = False
-settings["use_split_beta"] = False
+settings["use_split_beta"] = True
+
+settings["general_filt_low"] = 0.5
+settings["general_filt_high"] = 47.0
+
 
 settings["input_file_patterns"] = [
     ".bdf_32",

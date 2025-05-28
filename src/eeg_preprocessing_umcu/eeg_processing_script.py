@@ -15,10 +15,9 @@ from mne.beamformer import apply_lcmv_raw, make_lcmv
 from mne.datasets import fetch_fsaverage
 from mne.preprocessing import ICA
 
-from eeg_preprocessing_umcu.eeg_processing_settings import (
+from eeg_processing_settings import (
     f_font,
     f_size,
-    filter_settings,  # noqa: F401 #TODO: is filter_settings needed?
     font,
     my_image,
     settings,
@@ -687,7 +686,7 @@ def implement_channel_corrections(raw, config):
         return raw, config
 
     # Get channel names directly from MNE's montage
-    corrected_names = show_channel_correction_window(raw, montage_name, settings)
+    corrected_names = show_channel_correction_window(raw, montage_name)
 
     if corrected_names is None:  # User cancelled
         return raw, config
@@ -1398,7 +1397,7 @@ def perform_ica(raw, raw_temp, config):
 
     # Preparation of clean raw object to calculate ICA on
     raw_ica = raw.copy()
-    raw_ica.filter(l_freq=1, h_freq=47, l_trans_bandwidth=0.5, h_trans_bandwidth=1.5)
+    raw_ica.filter(l_freq=1.0, h_freq=47.0, l_trans_bandwidth=0.5, h_trans_bandwidth=1.5)
 
     # Mark bad channels but don't drop them yet
     raw_ica.info["bads"] = config[file_name, "bad"]
@@ -1561,7 +1560,7 @@ def filter_output_raw(raw_output, config, l_freq, h_freq):
             "No additional (<) 0.5 Hz high pass filter applied, already broadband filtered before beamformer and/or ICA"
         )
 
-    if (config["apply_beamformer"] or config["apply_ica"]) and (h_freq >= 47):  # noqa: PLR2004
+    if (config["apply_beamformer"] or config["apply_ica"]) and (h_freq >= 47.0):  # noqa: PLR2004
         h_freq = None
         print(
             "No additional (>) 47 Hz low pass filter applied, already broadband filtered before beamformer and/or ICA"
@@ -1616,7 +1615,7 @@ def save_epoch_data_to_txt(epoch_data, base, scalings=None, filtering=False, l_f
             l_freq = 0.5  # Since both beamformer and ICA already bandpass filter from 0.5 to 47 Hz
 
         if (config["apply_beamformer"] or config["apply_ica"]) and h_freq >= 47.0:  # noqa: PLR2004
-            h_freq = 47  # Since both beamformer and ICA already bandpass filter from 0.5 to 47 Hz
+            h_freq = 47.0  # Since both beamformer and ICA already bandpass filter from 0.5 to 47 Hz
 
         if filtering or config["apply_beamformer"] or config["apply_ica"]:
             file_name_out = base + "_" + str(l_freq) + "-" + str(h_freq) + " Hz_Epoch_" + str(i + 1) + ".txt"
@@ -1652,7 +1651,7 @@ def save_whole_EEG_to_txt(raw_output, config, base, scalings=None, filtering=Fal
         l_freq = 0.5  # Since both beamformer and ICA already bandpass filter from 0.5 to 45 Hz
 
     if (config["apply_beamformer"] or config["apply_ica"]) and h_freq >= 47.0:  # noqa: PLR2004
-        h_freq = 47  # Since both beamformer and ICA already bandpass filter from 0.5 to 45 Hz
+        h_freq = 47.0  # Since both beamformer and ICA already bandpass filter from 0.5 to 45 Hz
 
     if filtering or config["apply_beamformer"] or config["apply_ica"]:
         file_name_out = base + "_" + str(l_freq) + "-" + str(h_freq) + "_" + "Hz.txt"
@@ -1788,7 +1787,7 @@ while True:  # @noloop remove
 
                 plot_power_spectrum(raw_temp, filtered=False)
 
-                raw_temp.filter(l_freq=0.5, h_freq=47, l_trans_bandwidth=0.4,
+                raw_temp.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4,
                                 h_trans_bandwidth=1.5, picks="eeg")
                 
                 # Mark bad channels
@@ -1825,7 +1824,7 @@ while True:  # @noloop remove
 
                 # ********** Preparation of the final raw file and epochs for export **********
                 if config["apply_ica"] or config["apply_beamformer"]:
-                    raw.filter(l_freq=0.5, h_freq=47, l_trans_bandwidth=0.4, h_trans_bandwidth=1.5, picks="eeg")
+                    raw.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4, h_trans_bandwidth=1.5, picks="eeg")
                     msg = "Output signal filtered to 0.5-47 Hz (transition bands 0.4 Hz and 1.5 Hz resp. \
                         Necessary for ICA and/or Beamforming"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
