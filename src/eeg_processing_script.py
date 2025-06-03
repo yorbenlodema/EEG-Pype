@@ -1504,7 +1504,7 @@ def perform_beamform(raw, config):
     msg = "channels left in raw_beamform:" + str(len(raw.ch_names))
     window["-RUN_INFO-"].update(msg + "\n", append=True)
     raw = perform_average_reference(raw)
-    return create_spatial_filter(raw, config)
+    return create_spatial_filter(raw)
 
 
 def perform_epoch_selection(raw, config, sfreq):
