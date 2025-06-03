@@ -67,45 +67,44 @@ Follow the installation instructions provided on the Miniconda website.
 
 If not done already, [install Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
 
-### 2. Set up a Conda Environment
-
-Open a terminal (or Anaconda Prompt on Windows) and run the following commands:
-
-```bash
-# Create a new conda environment named 'eeg_env' with Python 3.11
-conda create -n eeg_env python=3.11
-
-# Activate the new environment
-conda activate eeg_env
-```
-
-### 3. Clone the Repository
+### 2. Clone the Repository
 
 Clone the EEG Preprocessing Tool repository:
 
 ```bash
-git clone https://github.com/yorbenlodema/eeg_preprocessing_umcu.git
-cd eeg_preprocessing_umcu
+git clone https://github.com/yorbenlodema/EEG-Pype.git
+cd EEG-Pype
 ```
 
-### 4. Install the Package and Dependencies
+### 3. Set up a Conda Environment
 
-Install the package and its dependencies using pip:
+Open a terminal (or Anaconda Prompt on Windows) and run the following commands:
 
 ```bash
-python -m pip install .
+# Create a new conda environment with the required packages
+conda env create -f Environment.yml
+
+# Activate the new environment
+conda activate EEG-Pype
 ```
-Note: make sure to install an editable version if you are a developer and want to make large changes besides changing something inside the scripts.
+
+### 4. Install PySimpleGUI separately
+
+Please verify that the newly created EEG-Pype Conda environment is activated by checking if your Terminal/Command Prompt line starts with "(EEG-Pype)" and not "(base)". Then install the package using pip:
+
+```bash
+python -m pip install --force-reinstall --extra-index-url https://PySimpleGUI.net/install PySimpleGUI
+```
 
 ### 5. Verify Installation
 
-To verify that the installation was successful, you can try running the main script (eeg_processing_script.py) in your favorite way (we have used Spyder to run the script during development). For the first use, it is important to select your newly created Miniconda environment in your IDE. In Spyder this is done via: preferences > Python interpreter > use the following interpreter. When opening the script in an IDE like Spyder, you can simply press 'run' to start the script. If everything is set up correctly, the script should run without any import errors.
+To verify that the installation was successful, you can try running the main script (eeg_processing_script.py) in your favorite way (we have used Spyder to run the script during development). For the first use, it is important to select your newly created Miniconda environment in your IDE. In Spyder this is done via: preferences > Python interpreter > use the following interpreter. Here you should be able to select your EEG-Pype Conda environment. When opening the script in an IDE like Spyder, you can simply press 'run' to start the script. If everything is set up correctly, the script should run without any import errors.
 
 ## Troubleshooting
 
 If you encounter any issues during installation:
 
-1. Make sure you have activated the conda environment (`conda activate eeg_env`).
+1. Make sure you have activated the conda environment (`conda activate EEG-Pype`).
 2. Try updating pip: `python -m pip install --upgrade pip`
 3. If you encounter any dependency conflicts, you can try installing dependencies manually:
    ```bash
@@ -113,7 +112,7 @@ If you encounter any issues during installation:
    pip install PySimpleGUI mne
    ```
 
-For any further issues, please open an issue on the [GitHub repository](https://github.com/snorben/eeg_preprocessing_umcu/issues).
+For any further issues, please open an issue on the [GitHub repository](https://github.com/snorben/EEG-Pype/issues).
 
 ## Updating the Software
 
@@ -121,12 +120,12 @@ When there's an update available on GitHub, follow these steps to update your lo
 1. Navigate to the Project Directory
 Open a terminal (or Anaconda Prompt on Windows) and navigate to your project directory:
 ```bash
-cd path/to/eeg_preprocessing_umcu
+cd path/to/EEG-Pype
 ```
 3. Activate the Conda Environment
 Ensure you're using the correct environment:
 ```bash
-conda activate eeg_env
+conda activate EEG-Pype
 ```
 5. Pull the Latest Changes
 Fetch and merge the latest changes from the GitHub repository:
@@ -150,9 +149,9 @@ conda update --all
 If you're still having problems, you can try creating a fresh environment:
 ```bash
 conda deactivate
-conda remove --name eeg_env --all
-conda create -n eeg_env python=3.8
-conda activate eeg_env
+conda remove --name EEG-Pype --all
+conda create -n EEG-Pype python=3.11
+conda activate EEG-Pype
 python -m pip install .
 ```
 
@@ -205,7 +204,7 @@ In the GUI, the number of threads should be specified. This number means that th
 3. **Approximate Entropy (ApEn)**
    - Similar to SampEn but with self-matches.
    - Options:
-     - Order m: Pattern length (typically 1 or 2).
+     - Order m: Pattern length (typically 2).
      - Tolerance r: Similarity criterion (typically 0.1-0.25 * SD).
 
 #### Spectral Analysis Details
