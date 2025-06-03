@@ -18,15 +18,13 @@ dependencies:
   - scipy=1.13.1
   - pyqt=5.15
 
-  # Other important dependencies
-  - matplotlib=3.9.0 # If your scripts generate plots
-  - scikit-learn=1.5.0 # If used (not in direct imports, but common in analysis)
-  - h5py=3.11.0 # For saving/loading data in HDF5 format (e.g., MNE)
-  - openpyxl=3.1.2 # For pandas to read/write Excel .xlsx files
-  - joblib=1.4.2 # Often used by scikit-learn and MNE for parallel processing
-  - tqdm=4.66.4 # For progress bars
-  - requests=2.32.2 # If you fetch data from web
-  - jinja2=3.1.4 # Often a dependency for other packages like nbconvert or sphinx
+  # Other dependencies
+  - matplotlib=3.9.0
+  - scikit-learn=1.5.0
+  - h5py=3.11.0
+  - openpyxl=3.1.2
+  - joblib=1.4.2
+  - tqdm=4.66.4
 
   - pip:
     - PySimpleGUI==5.0.4 --extra-index-url https://PySimpleGUI.net/install
