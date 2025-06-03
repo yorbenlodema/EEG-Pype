@@ -37,6 +37,7 @@ FREQUENCY_BANDS = {
     "delta": {"pattern": r"0\.5-4\.0|delta", "range": (0.5, 4.0)},
     "theta": {"pattern": r"4\.0-8\.0|theta", "range": (4.0, 8.0)},
     "alpha": {"pattern": r"8\.0-13\.0|alpha", "range": (8.0, 13.0)},
+    "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
     # Keep broadband (with this exact name) since this band is used for power and SV calculations.
@@ -262,7 +263,7 @@ def create_gui():
                             "Calculate Approximate Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
                         )
                     ],
-                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("1", key="-APEN_M-", size=(3, 1))],
+                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-APEN_M-", size=(3, 1))],
                     [
                         sg.Text("Tolerance (r):", background_color=MAIN_BG),
                         sg.Input("0.25", key="-APEN_R-", size=(3, 1)),
@@ -773,7 +774,7 @@ def calculate_sampen_for_channels(data, m=2):
     return sampen_values
 
 
-def calculate_apen_for_channels(data, m=1, r=0.25):
+def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
 
     Follows Pincus 1995, with optimized implementation using vectorization.
@@ -1743,24 +1744,20 @@ def process_subject_condition(args):
                                         logger.exception("Error checking memory requirements for SV")
                                         raise
 
-                                # Initialize list to store all epochs
+                                # Read and store all epochs with offset correction
                                 all_data_sv = []
                                 logger.info(f"Processing concatenated spectral variability for {subject} - {condition}")
-
-                                # Read and store all epochs with offset correction
-                                for file_path in epoch_files:  # TODO: this overwrites the loop variable `file_path` from line 1559, which should lead to buggy behavior!
+                                for sv_epoch_file_path in epoch_files:  # Renamed variable
                                     try:
                                         if has_headers:
-                                            data = pd.read_csv(file_path, sep=None, engine="python")
+                                            data = pd.read_csv(sv_epoch_file_path, sep=None, engine="python")
                                         else:
-                                            data = pd.read_csv(file_path, sep=None, engine="python", header=None)
-
+                                            data = pd.read_csv(sv_epoch_file_path, sep=None, engine="python", header=None)
                                         epoch_data = data.to_numpy()
-
                                         all_data_sv.append(epoch_data)
                                         del data, epoch_data
                                     except Exception:
-                                        logger.exception(f"Error processing file {os.path.basename(file_path)} for SV")
+                                        logger.exception(f"Error processing file {os.path.basename(sv_epoch_file_path)} for SV") # Use renamed variable
                                         continue
 
                                 if all_data_sv:
@@ -1914,19 +1911,19 @@ def process_subject_condition(args):
                             )
                             # Initialize list to store all epochs
                             all_data = []
-                            data_values = None  # Initialize data_values in this scope
 
                             try:
-                                # Read and store all epochs with offset correction
-                                for file_path in epoch_files:  # TODO: this overwrites the loop variable `file_path` from line 1559, which should lead to buggy behavior!
+                                for aec_epoch_file_path in epoch_files:  # Renamed variable
                                     try:
-                                        data = pd.read_csv(file_path, sep=None, engine="python")
+                                        # Assuming 'data' and 'epoch_data' are correctly defined if this path is taken.
+                                        # The provided snippet for AEC was slightly different.
+                                        # Based on the SV block, it would be:
+                                        data = pd.read_csv(aec_epoch_file_path, sep=None, engine="python") # Corrected based on context
                                         epoch_data = data.to_numpy()
-
                                         all_data.append(epoch_data)
                                         del data, epoch_data
                                     except Exception:
-                                        logger.exception(f"Error processing file {os.path.basename(file_path)}")
+                                        logger.exception(f"Error processing file {os.path.basename(aec_epoch_file_path)}") # Use renamed variable
                                         continue
 
                                 if all_data:  # Check if we have any valid data
