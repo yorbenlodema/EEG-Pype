@@ -122,10 +122,26 @@ def write_config_file(config):
         pickle.dump(config, f)
     return fn
 
+# def load_config(fn):
+#     """Read config file in .pkl format."""
+#     with open(fn, "rb") as f:
+#         return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
+    
 def load_config(fn):
-    """Read config file in .pkl format."""
+    """Read config file in .pkl format and upgrade legacy keys."""
     with open(fn, "rb") as f:
-        return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
+        cfg = pickle.load(f)                               # noqa: S301
+
+    # ─── Compatibility: move old batch-level drop list into per-file keys ───
+    if "channels_to_be_dropped" in cfg:
+        legacy_drop = cfg.pop("channels_to_be_dropped")
+        for fname in cfg.get("input_file_names", []):
+            cfg[fname, "drop"] = legacy_drop
+
+    # Clean up flag that used to suppress second popup
+    cfg.pop("channels_to_be_dropped_selected", None)
+    return cfg
+
 
 def select_input_file_paths(config, settings):
     """Select input files."""
@@ -1379,11 +1395,21 @@ def create_raw(config, montage, no_montage_files):
     return raw, config
 
 
-def update_channels_to_be_dropped(raw, config):
-    """Ask channels_to_be_dropped."""
+# def update_channels_to_be_dropped(raw, config):
+#     """Ask channels_to_be_dropped."""
+#     channel_names = raw.ch_names
+#     channels_to_be_dropped = select_channels_to_be_dropped(channel_names)  # ask user to select
+#     config["channels_to_be_dropped"] = channels_to_be_dropped  # store for rerun function
+#     return raw, config
+
+def update_channels_to_be_dropped(raw, config, file_name):
+    """Popup for channels to be dropped *for this file only*.
+
+    Stores the list under `config[(file_name, "drop")]`.
+    """
     channel_names = raw.ch_names
-    channels_to_be_dropped = select_channels_to_be_dropped(channel_names)  # ask user to select
-    config["channels_to_be_dropped"] = channels_to_be_dropped  # store for rerun function
+    drop_list = select_channels_to_be_dropped(channel_names)  # ask user
+    config[file_name, "drop"] = drop_list
     return raw, config
 
 
@@ -1770,13 +1796,23 @@ while True:  # @noloop remove
 
                 raw, config = create_raw(config, montage, no_montage_patterns)
 
-                if config["rerun"] == 0 and config["channels_to_be_dropped_selected"] == 0:
-                    raw, config = update_channels_to_be_dropped(raw, config)
+                # if config["rerun"] == 0 and config["channels_to_be_dropped_selected"] == 0:
+                #     raw, config = update_channels_to_be_dropped(raw, config)
 
-                    config["channels_to_be_dropped_selected"] = 1
+                #     config["channels_to_be_dropped_selected"] = 1
                 
-                # Entirely drop excluded channels
-                raw.drop_channels(config["channels_to_be_dropped"])
+                # # Entirely drop excluded channels
+                # raw.drop_channels(config["channels_to_be_dropped"])
+                
+                # Channel dropping – per-file
+                drop_key = (file_name, "drop")
+                
+                if config["rerun"] == 0 or drop_key not in config:
+                    # First time we encounter this file (or a fresh run) → ask user
+                    raw, config = update_channels_to_be_dropped(raw, config, file_name)
+                
+                # Always drop whatever is recorded for this file (empty list if key missing)
+                raw.drop_channels(config.get(drop_key, []))
 
                 # Temporary raw file to work with during preprocessing
                 raw_temp = raw.copy()
