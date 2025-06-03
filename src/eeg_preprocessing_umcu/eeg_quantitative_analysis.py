@@ -263,7 +263,7 @@ def create_gui():
                             "Calculate Approximate Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
                         )
                     ],
-                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("1", key="-APEN_M-", size=(3, 1))],
+                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-APEN_M-", size=(3, 1))],
                     [
                         sg.Text("Tolerance (r):", background_color=MAIN_BG),
                         sg.Input("0.25", key="-APEN_R-", size=(3, 1)),
@@ -774,7 +774,7 @@ def calculate_sampen_for_channels(data, m=2):
     return sampen_values
 
 
-def calculate_apen_for_channels(data, m=1, r=0.25):
+def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
 
     Follows Pincus 1995, with optimized implementation using vectorization.
@@ -1911,35 +1911,20 @@ def process_subject_condition(args):
                             )
                             # Initialize list to store all epochs
                             all_data = []
-                            data_values = None  # Initialize data_values in this scope
 
                             try:
-                                # Read and store all epochs with offset correction
-                                for file_path in epoch_files:
+                                for aec_epoch_file_path in epoch_files:  # Renamed variable
                                     try:
-                                        data = pd.read_csv(file_path, sep=None, engine="python")
+                                        # Assuming 'data' and 'epoch_data' are correctly defined if this path is taken.
+                                        # The provided snippet for AEC was slightly different.
+                                        # Based on the SV block, it would be:
+                                        data = pd.read_csv(aec_epoch_file_path, sep=None, engine="python") # Corrected based on context
                                         epoch_data = data.to_numpy()
-
                                         all_data.append(epoch_data)
                                         del data, epoch_data
                                     except Exception:
-                                        logger.exception(f"Error processing file {os.path.basename(file_path)}")
+                                        logger.exception(f"Error processing file {os.path.basename(aec_epoch_file_path)}") # Use renamed variable
                                         continue
-                                    
-                            # Read and store all epochs with offset correction
-                            all_data = []
-                            for aec_epoch_file_path in epoch_files:  # Renamed variable
-                                try:
-                                    # Assuming 'data' and 'epoch_data' are correctly defined if this path is taken.
-                                    # The provided snippet for AEC was slightly different.
-                                    # Based on the SV block, it would be:
-                                    data = pd.read_csv(aec_epoch_file_path, sep=None, engine="python") # Corrected based on context
-                                    epoch_data = data.to_numpy()
-                                    all_data.append(epoch_data)
-                                    del data, epoch_data
-                                except Exception:
-                                    logger.exception(f"Error processing file {os.path.basename(aec_epoch_file_path)}") # Use renamed variable
-                                    continue
 
                                 if all_data:  # Check if we have any valid data
                                     # Concatenate along time axis

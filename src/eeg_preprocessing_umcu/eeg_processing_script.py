@@ -122,12 +122,47 @@ def write_config_file(config):
         pickle.dump(config, f)
     return fn
 
+# def load_config(fn):
+#     """Read config file in .pkl format."""
+#     with open(fn, "rb") as f:
+#         return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
 
 def load_config(fn):
-    """Read config file in .pkl format."""
+    """Read config file in .pkl format and sanitize NumPy types."""
     with open(fn, "rb") as f:
-        return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
+        config_loaded = pickle.load(f)  # noqa: S301
 
+    sanitized_config = {}
+    for key, value in config_loaded.items():
+        if isinstance(value, np.generic):  # Catches numpy.float64, numpy.int64, etc.
+            sanitized_config[key] = value.item()  # Converts to Python native type
+        elif isinstance(value, np.ndarray):
+            # Decide how to handle arrays: convert to list, or specific items
+            # For simplicity, let's assume if it's an array, it should be a list
+            sanitized_config[key] = value.tolist()
+        elif isinstance(value, dict): # Handle nested dictionaries
+            inner_sanitized_dict = {}
+            for inner_key, inner_value in value.items():
+                if isinstance(inner_value, np.generic):
+                    inner_sanitized_dict[inner_key] = inner_value.item()
+                elif isinstance(inner_value, np.ndarray):
+                    inner_sanitized_dict[inner_key] = inner_value.tolist()
+                else:
+                    inner_sanitized_dict[inner_key] = inner_value
+            sanitized_config[key] = inner_sanitized_dict
+        elif isinstance(value, list): # Handle lists that might contain numpy types
+            new_list = []
+            for item in value:
+                if isinstance(item, np.generic):
+                    new_list.append(item.item())
+                elif isinstance(item, np.ndarray):
+                    new_list.append(item.tolist())
+                else:
+                    new_list.append(item)
+            sanitized_config[key] = new_list
+        else:
+            sanitized_config[key] = value
+    return sanitized_config
 
 def select_input_file_paths(config, settings):
     """Select input files."""
@@ -169,7 +204,6 @@ def load_config_file():
     msg = "\nConfig " + config_file + " loaded for rerun\n"
     window["-FILE_INFO-"].update(msg + "\n", append=True)
     return config
-
 
 def ask_apply_output_filtering(config):
     """Ask if user wants to filter output."""
