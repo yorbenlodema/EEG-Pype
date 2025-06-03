@@ -122,47 +122,10 @@ def write_config_file(config):
         pickle.dump(config, f)
     return fn
 
-# def load_config(fn):
-#     """Read config file in .pkl format."""
-#     with open(fn, "rb") as f:
-#         return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
-
 def load_config(fn):
-    """Read config file in .pkl format and sanitize NumPy types."""
+    """Read config file in .pkl format."""
     with open(fn, "rb") as f:
-        config_loaded = pickle.load(f)  # noqa: S301
-
-    sanitized_config = {}
-    for key, value in config_loaded.items():
-        if isinstance(value, np.generic):  # Catches numpy.float64, numpy.int64, etc.
-            sanitized_config[key] = value.item()  # Converts to Python native type
-        elif isinstance(value, np.ndarray):
-            # Decide how to handle arrays: convert to list, or specific items
-            # For simplicity, let's assume if it's an array, it should be a list
-            sanitized_config[key] = value.tolist()
-        elif isinstance(value, dict): # Handle nested dictionaries
-            inner_sanitized_dict = {}
-            for inner_key, inner_value in value.items():
-                if isinstance(inner_value, np.generic):
-                    inner_sanitized_dict[inner_key] = inner_value.item()
-                elif isinstance(inner_value, np.ndarray):
-                    inner_sanitized_dict[inner_key] = inner_value.tolist()
-                else:
-                    inner_sanitized_dict[inner_key] = inner_value
-            sanitized_config[key] = inner_sanitized_dict
-        elif isinstance(value, list): # Handle lists that might contain numpy types
-            new_list = []
-            for item in value:
-                if isinstance(item, np.generic):
-                    new_list.append(item.item())
-                elif isinstance(item, np.ndarray):
-                    new_list.append(item.tolist())
-                else:
-                    new_list.append(item)
-            sanitized_config[key] = new_list
-        else:
-            sanitized_config[key] = value
-    return sanitized_config
+        return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
 
 def select_input_file_paths(config, settings):
     """Select input files."""
@@ -1810,11 +1773,10 @@ while True:  # @noloop remove
                 if config["rerun"] == 0 and config["channels_to_be_dropped_selected"] == 0:
                     raw, config = update_channels_to_be_dropped(raw, config)
 
-                    config['channels_to_be_dropped_selected'] = 1
+                    config["channels_to_be_dropped_selected"] = 1
                 
                 # Entirely drop excluded channels
-                raw.drop_channels(config['channels_to_be_dropped'])
-                                
+                raw.drop_channels(config["channels_to_be_dropped"])
 
                 # Temporary raw file to work with during preprocessing
                 raw_temp = raw.copy()
@@ -2034,22 +1996,42 @@ while True:  # @noloop remove
                                     h_freq=config["cut_off_frequency", high_band],
                                 )
 
+                write_config_file(config)
                 filenum = filenum + 1
                 progress_bar_files.UpdateBar(filenum, lfl)  # files
                 # end of for loop over files
 
+        # except Exception as e:
+        #     print(traceback.format_exc())
+        #     print_dict(config)
+        #     # write config to pkl file
+        #     write_config_file(config)
+        #     fn = config["logfile"]
+        #     with open(fn, "a", encoding="UTF-8") as f:
+        #         f.write(traceback.format_exc())
+        #         f.write(window["-FILE_INFO-"].get())
+        #     with open(fn, "w", encoding="UTF-8") as f:
+        #         f.write(window["-RUN_INFO-"].get())
+        #     sg.popup_error_with_traceback("Error - info: ", e)
+            
         except Exception as e:
-            print(traceback.format_exc())
-            print_dict(config)
-            # write config to pkl file
-            write_config_file(config)
-            fn = config["logfile"]
-            with open(fn, "a", encoding="UTF-8") as f:
-                f.write(traceback.format_exc())
-                f.write(window["-FILE_INFO-"].get())
-            with open(fn, "w", encoding="UTF-8") as f:
-                f.write(window["-RUN_INFO-"].get())
-            sg.popup_error_with_traceback("Error - info: ", e)
+            try:
+                write_config_file(config)
+            except Exception as save_err:
+                print("Could not write recovery .pkl:", save_err)
+
+            try:
+                # make sure the directory exists
+                os.makedirs(os.path.dirname(config["logfile"]), exist_ok=True)
+                with open(config["logfile"], "a", encoding="utf-8") as f:
+                    f.write(traceback.format_exc())
+                    f.write(window["-FILE_INFO-"].get())
+                with open(config["logfile"], "w", encoding="utf-8") as f:
+                    f.write(window["-RUN_INFO-"].get())
+            except Exception as log_err:
+                print("Could not write log file:", log_err)
+        
+            sg.popup_error_with_traceback("Error – info:", e) 
 
         # write config to pkl file
         print_dict(config)
