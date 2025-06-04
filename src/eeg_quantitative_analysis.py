@@ -514,24 +514,48 @@ def is_broadband_condition(condition):
     return bool(re.search(pattern, condition, re.IGNORECASE))
 
 
+# def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
+#     """Save connectivity matrix to CSV with proper channel names."""
+#     # Create subject subfolder
+#     subject_folder = os.path.join(folder_path, subject)
+#     os.makedirs(subject_folder, exist_ok=True)
+
+#     # Include level type in filename for uniqueness
+#     filename = f"{level_type}_{freq_band}_{feature}.csv" if level_type else f"{freq_band}_{feature}.csv"
+#     filepath = os.path.join(subject_folder, filename)
+
+#     # Convert matrix to DataFrame with channel names
+#     df = pd.DataFrame(matrix)
+#     df.index = channel_names
+#     df.columns = channel_names
+
+#     df.to_csv(filepath)
+#     return filepath
+
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
-    """Save connectivity matrix to CSV with proper channel names."""
-    # Create subject subfolder
+    """Save connectivity matrix to CSV with proper channel names, prepending subject to the filename."""
     subject_folder = os.path.join(folder_path, subject)
     os.makedirs(subject_folder, exist_ok=True)
 
-    # Include level type in filename for uniqueness
-    filename = f"{level_type}_{freq_band}_{feature}.csv" if level_type else f"{freq_band}_{feature}.csv"
+    # Construct the latter part of the filename as before
+    if level_type:
+        base_filename_part = f"{level_type}_{freq_band}_{feature}"
+    else:
+        base_filename_part = f"{freq_band}_{feature}"
+
+    # Prepend the subject identifier
+    filename = f"{subject}_{base_filename_part}.csv"
+    # Example: "eeg_filename_id_source_delta_pli.csv" or "eeg_filename_id_delta_pli.csv"
+
     filepath = os.path.join(subject_folder, filename)
 
-    # Convert matrix to DataFrame with channel names
+    # Convert matrix to DataFrame with channel names (this remains the same)
     df = pd.DataFrame(matrix)
     df.index = channel_names
     df.columns = channel_names
 
     df.to_csv(filepath)
     return filepath
-
 
 def linear_detrend(data):
     """Apply linear detrending to each channel."""
@@ -2365,7 +2389,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
     has_broadband = False
 
     for conditions in grouped_files.values():
-        for condition in conditions():
+        for condition in conditions:
             band = extract_freq_band(condition)
             if band != "unknown":
                 found_bands.add(band)
