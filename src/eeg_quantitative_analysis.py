@@ -32,19 +32,21 @@ MIN_WINDOW_SIZE = 100  # Minimum window size for spectral variability in ms
 
 # Be careful, option to change frequency bands (both those recognized in the epoch file names
 # and bands used for power and spectral variability calculations. Don't change the format. You can add additional
-# bands in the same format.
+# bands in the same format. Connectivity measures will still be calculated on epochs with bands not
+# listed here though that might affect the naming of the output columns in the Excel output.
+# It is probably advisable to limit the broadband range to something like 20-30 Hz to make sure the
+# total power used in relative power and spectral variability contain less EMG noise.
 FREQUENCY_BANDS = {
     "delta": {"pattern": r"0\.5-4\.0|delta", "range": (0.5, 4.0)},
     "theta": {"pattern": r"4\.0-8\.0|theta", "range": (4.0, 8.0)},
     "alpha": {"pattern": r"8\.0-13\.0|alpha", "range": (8.0, 13.0)},
+    "alpha1": {"pattern": r"8\.0-10\.0|alpha1", "range": (8.0, 10.0)},
+    "alpha2": {"pattern": r"10\.0-13\.0|alpha2", "range": (10.0, 13.0)},
     "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
-    # Keep broadband (with this exact name) since this band is used for power and SV calculations.
-    # It's fine if broadband refers to unfiltered epochs, power and SV calculations create a new PSD.
-    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 47.0)},
+    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 30.0)},
 }
-
 
 def validate_frequency_bands():
     """Validate FREQUENCY_BANDS configuration."""
@@ -498,7 +500,6 @@ def extract_freq_band(condition):
             return band_name
     return "unknown"
 
-
 def is_broadband_condition(condition):
     """
     Check if condition matches broadband pattern from FREQUENCY_BANDS config.
@@ -512,25 +513,6 @@ def is_broadband_condition(condition):
         return False
     pattern = FREQUENCY_BANDS["broadband"]["pattern"]
     return bool(re.search(pattern, condition, re.IGNORECASE))
-
-
-# def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
-#     """Save connectivity matrix to CSV with proper channel names."""
-#     # Create subject subfolder
-#     subject_folder = os.path.join(folder_path, subject)
-#     os.makedirs(subject_folder, exist_ok=True)
-
-#     # Include level type in filename for uniqueness
-#     filename = f"{level_type}_{freq_band}_{feature}.csv" if level_type else f"{freq_band}_{feature}.csv"
-#     filepath = os.path.join(subject_folder, filename)
-
-#     # Convert matrix to DataFrame with channel names
-#     df = pd.DataFrame(matrix)
-#     df.index = channel_names
-#     df.columns = channel_names
-
-#     df.to_csv(filepath)
-#     return filepath
 
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
     """Save connectivity matrix to CSV with proper channel names, prepending subject to the filename."""
@@ -549,7 +531,7 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
 
     filepath = os.path.join(subject_folder, filename)
 
-    # Convert matrix to DataFrame with channel names (this remains the same)
+    # Convert matrix to DataFrame with channel names
     df = pd.DataFrame(matrix)
     df.index = channel_names
     df.columns = channel_names
@@ -1524,7 +1506,7 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 def parse_epoch_filename(filename):
     """Parse epoch filename to extract components.
 
-    Example: testjulia20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
+    Example: test20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
     Alternative: 41_Source_level_broadband_Epoch1.txt.
     """
     # Extract the base name (everything before first underscore)
