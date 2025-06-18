@@ -744,41 +744,8 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float):
         verbose=False,
     )
 
-    # print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")  #noqa: ERA001
-
     return freqs, psds.T
 
-
-# def calculate_sampen_for_channels(data, m=2):
-#     """
-#     Calculate Sample Entropy for each channel using antropy.
-
-#     Parameters
-#     ----------
-#     data : numpy array (time points * channels)
-#     m : int
-#         Embedding dimension (order)
-
-#     Returns
-#     -------
-#     numpy.array : Sample Entropy values for each channel
-#     """
-#     n_channels = data.shape[1]
-#     sampen_values = np.zeros(n_channels)
-#     m = np.int32(m)
-
-#     for ch in range(n_channels):
-#         try:
-#             sampen_values[ch] = sample_entropy(data[:, ch], order=m)
-
-#             if ch % 10 == 0:  # Log progress every 10 channels
-#                 logger.info(f"Processed SampEn for {ch}/{n_channels} channels")
-
-#         except Exception:
-#             logger.exception(f"Error calculating SampEn for channel {ch}")
-#             sampen_values[ch] = np.nan
-
-#     return sampen_values
 
 def calculate_sampen_for_channels(data, m=2):
     """
@@ -802,7 +769,6 @@ def calculate_sampen_for_channels(data, m=2):
                 sampen_values[ch] = 0
                 continue
 
-            # This call now provides arguments with the exact expected types.
             sampen_values[ch] = sample_entropy(channel_data, order=order_m)
 
             if ch % 10 == 0:
@@ -813,6 +779,7 @@ def calculate_sampen_for_channels(data, m=2):
             sampen_values[ch] = np.nan
 
     return sampen_values
+
 
 def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
@@ -891,7 +858,6 @@ def _phi_vectorized(x, m, r):
     max_diff = np.max(diff, axis=2)
 
     # Count similar patterns (within tolerance r)
-    # For each pattern, count how many other patterns are within distance r
     similar_patterns = np.sum(max_diff <= r, axis=1)
 
     # Normalize counts by N_m
@@ -1021,10 +987,6 @@ def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, p
         raise ValueError("polyorder must be less than window_length.")
     if len(power_spectrum) < window_length:
         # Not enough data points to apply the filter with the given window length.
-        # You might return the original spectrum, or raise an error, or apply a shorter filter.
-        # For now, let's return the original spectrum if it's too short.
-        # Consider logging a warning here if you have a logging setup.
-        # print(f"Warning: Power spectrum length ({len(power_spectrum)}) is less than window_length ({window_length}). Returning original spectrum.")
         return power_spectrum
 
     smoothed_spectrum = signal.savgol_filter(power_spectrum, window_length, polyorder)
@@ -1211,8 +1173,6 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
     if not nx.is_connected(G):
         return None, None, False
 
-    # If connected, proceed with calculations
-    # Negate back to get original weights
     mst_matrix = -mst_matrix
     G = nx.from_numpy_array(mst_matrix)
 
@@ -1503,10 +1463,9 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 
     mirrors = find_mirror_patterns(combinations)
 
-    # Modified to separate pattern step size from sampling interval
     rank_inds = []
-    for i in range(0, sz - n * st, 1):  # Changed step size to 1
-        dat_array = data[i : i + n * st : st, :]  # Keep st for within-pattern sampling
+    for i in range(0, sz - n * st, 1):
+        dat_array = data[i : i + n * st : st, :]
         if dat_array.shape[0] < n:  # Safety check
             break
         dat_order = dat_array.argsort(axis=0)
