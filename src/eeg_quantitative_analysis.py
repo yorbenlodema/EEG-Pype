@@ -32,19 +32,21 @@ MIN_WINDOW_SIZE = 100  # Minimum window size for spectral variability in ms
 
 # Be careful, option to change frequency bands (both those recognized in the epoch file names
 # and bands used for power and spectral variability calculations. Don't change the format. You can add additional
-# bands in the same format.
+# bands in the same format. Connectivity measures will still be calculated on epochs with bands not
+# listed here though that might affect the naming of the output columns in the Excel output.
+# It is probably advisable to limit the broadband range to something like 20-30 Hz to make sure the
+# total power used in relative power and spectral variability contain less EMG noise.
 FREQUENCY_BANDS = {
     "delta": {"pattern": r"0\.5-4\.0|delta", "range": (0.5, 4.0)},
     "theta": {"pattern": r"4\.0-8\.0|theta", "range": (4.0, 8.0)},
     "alpha": {"pattern": r"8\.0-13\.0|alpha", "range": (8.0, 13.0)},
+    "alpha1": {"pattern": r"8\.0-10\.0|alpha1", "range": (8.0, 10.0)},
+    "alpha2": {"pattern": r"10\.0-13\.0|alpha2", "range": (10.0, 13.0)},
     "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
-    # Keep broadband (with this exact name) since this band is used for power and SV calculations.
-    # It's fine if broadband refers to unfiltered epochs, power and SV calculations create a new PSD.
-    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 47.0)},
+    "broadband": {"pattern": r"0\.5-30|broadband", "range": (0.5, 30.0)},
 }
-
 
 def validate_frequency_bands():
     """Validate FREQUENCY_BANDS configuration."""
@@ -163,7 +165,7 @@ def create_gui():
     header = [
         [
             sg.Text(
-                "EEG Quantitative Analysis",
+                "EEG-Pype Quantitative Analysis",
                 font=("Helvetica", 20, "bold"),
                 text_color=HEADER_TEXT,
                 background_color=HEADER_BG,
@@ -498,7 +500,6 @@ def extract_freq_band(condition):
             return band_name
     return "unknown"
 
-
 def is_broadband_condition(condition):
     """
     Check if condition matches broadband pattern from FREQUENCY_BANDS config.
@@ -512,25 +513,6 @@ def is_broadband_condition(condition):
         return False
     pattern = FREQUENCY_BANDS["broadband"]["pattern"]
     return bool(re.search(pattern, condition, re.IGNORECASE))
-
-
-# def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
-#     """Save connectivity matrix to CSV with proper channel names."""
-#     # Create subject subfolder
-#     subject_folder = os.path.join(folder_path, subject)
-#     os.makedirs(subject_folder, exist_ok=True)
-
-#     # Include level type in filename for uniqueness
-#     filename = f"{level_type}_{freq_band}_{feature}.csv" if level_type else f"{freq_band}_{feature}.csv"
-#     filepath = os.path.join(subject_folder, filename)
-
-#     # Convert matrix to DataFrame with channel names
-#     df = pd.DataFrame(matrix)
-#     df.index = channel_names
-#     df.columns = channel_names
-
-#     df.to_csv(filepath)
-#     return filepath
 
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
     """Save connectivity matrix to CSV with proper channel names, prepending subject to the filename."""
@@ -549,7 +531,7 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
 
     filepath = os.path.join(subject_folder, filename)
 
-    # Convert matrix to DataFrame with channel names (this remains the same)
+    # Convert matrix to DataFrame with channel names
     df = pd.DataFrame(matrix)
     df.index = channel_names
     df.columns = channel_names
@@ -762,33 +744,34 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float):
         verbose=False,
     )
 
-    # print(f"Multitaper PSD Frequency resolution: {freqs[1] - freqs[0]:.3f} Hz")  #noqa: ERA001
-
     return freqs, psds.T
 
 
 def calculate_sampen_for_channels(data, m=2):
     """
     Calculate Sample Entropy for each channel using antropy.
-
-    Parameters
-    ----------
-    data : numpy array (time points * channels)
-    m : int
-        Embedding dimension (order)
-
-    Returns
-    -------
-    numpy.array : Sample Entropy values for each channel
+    This version includes robust type casting to match Numba's requirements.
     """
     n_channels = data.shape[1]
     sampen_values = np.zeros(n_channels)
 
+    # 1. Force the order parameter to be a 32-BIT INTEGER (i4).
+    #    This is required by the explicit Numba signature in antropy.
+    order_m = np.int32(m)
+
     for ch in range(n_channels):
         try:
-            sampen_values[ch] = sample_entropy(data[:, ch], order=m)
+            # 2. Force the data to be a C-contiguous array of 64-bit floats (f8[:]).
+            #    Numba can be sensitive to array memory layout.
+            channel_data = np.ascontiguousarray(data[:, ch], dtype=np.float64)
 
-            if ch % 10 == 0:  # Log progress every 10 channels
+            if np.std(channel_data) == 0:
+                sampen_values[ch] = 0
+                continue
+
+            sampen_values[ch] = sample_entropy(channel_data, order=order_m)
+
+            if ch % 10 == 0:
                 logger.info(f"Processed SampEn for {ch}/{n_channels} channels")
 
         except Exception:
@@ -875,7 +858,6 @@ def _phi_vectorized(x, m, r):
     max_diff = np.max(diff, axis=2)
 
     # Count similar patterns (within tolerance r)
-    # For each pattern, count how many other patterns are within distance r
     similar_patterns = np.sum(max_diff <= r, axis=1)
 
     # Normalize counts by N_m
@@ -1005,10 +987,6 @@ def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, p
         raise ValueError("polyorder must be less than window_length.")
     if len(power_spectrum) < window_length:
         # Not enough data points to apply the filter with the given window length.
-        # You might return the original spectrum, or raise an error, or apply a shorter filter.
-        # For now, let's return the original spectrum if it's too short.
-        # Consider logging a warning here if you have a logging setup.
-        # print(f"Warning: Power spectrum length ({len(power_spectrum)}) is less than window_length ({window_length}). Returning original spectrum.")
         return power_spectrum
 
     smoothed_spectrum = signal.savgol_filter(power_spectrum, window_length, polyorder)
@@ -1195,8 +1173,6 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
     if not nx.is_connected(G):
         return None, None, False
 
-    # If connected, proceed with calculations
-    # Negate back to get original weights
     mst_matrix = -mst_matrix
     G = nx.from_numpy_array(mst_matrix)
 
@@ -1487,10 +1463,9 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 
     mirrors = find_mirror_patterns(combinations)
 
-    # Modified to separate pattern step size from sampling interval
     rank_inds = []
-    for i in range(0, sz - n * st, 1):  # Changed step size to 1
-        dat_array = data[i : i + n * st : st, :]  # Keep st for within-pattern sampling
+    for i in range(0, sz - n * st, 1):
+        dat_array = data[i : i + n * st : st, :]
         if dat_array.shape[0] < n:  # Safety check
             break
         dat_order = dat_array.argsort(axis=0)
@@ -1524,7 +1499,7 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 def parse_epoch_filename(filename):
     """Parse epoch filename to extract components.
 
-    Example: testjulia20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
+    Example: test20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
     Alternative: 41_Source_level_broadband_Epoch1.txt.
     """
     # Extract the base name (everything before first underscore)

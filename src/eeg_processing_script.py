@@ -1115,7 +1115,6 @@ def create_dict():
         sg.popup_error("Error create_dict: ", location=(100, 100), font=font)
         window.close()
 
-
 def create_spatial_filter(raw_b):
     """Create a spatial filter for the LCMV beamforming method.
 
@@ -1124,6 +1123,9 @@ def create_spatial_filter(raw_b):
     fs_dir = fetch_fsaverage(verbose=True)
     subject = "fsaverage"
     trans = "fsaverage"
+    
+    #current_data_rank = mne.rank(raw_b.info)['eeg'] 
+    
     # Loading boundary-element model
     bem = os.path.join(fs_dir, "bem", "fsaverage-5120-5120-5120-bem-sol.fif")
     # Setting up source space according to Desikan-Killiany atlas
@@ -1168,7 +1170,7 @@ def create_spatial_filter(raw_b):
         noise_cov=noise_cov,
         pick_ori="max-power",
         weight_norm="unit-noise-gain",
-        rank=None,
+        rank=None, 
     )
 
 
@@ -1394,13 +1396,6 @@ def create_raw(config, montage, no_montage_files):
     config["sample_frequency"] = raw.info["sfreq"]
     return raw, config
 
-
-# def update_channels_to_be_dropped(raw, config):
-#     """Ask channels_to_be_dropped."""
-#     channel_names = raw.ch_names
-#     channels_to_be_dropped = select_channels_to_be_dropped(channel_names)  # ask user to select
-#     config["channels_to_be_dropped"] = channels_to_be_dropped  # store for rerun function
-#     return raw, config
 
 def update_channels_to_be_dropped(raw, config, file_name):
     """Popup for channels to be dropped *for this file only*.
