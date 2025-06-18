@@ -1397,13 +1397,6 @@ def create_raw(config, montage, no_montage_files):
     return raw, config
 
 
-# def update_channels_to_be_dropped(raw, config):
-#     """Ask channels_to_be_dropped."""
-#     channel_names = raw.ch_names
-#     channels_to_be_dropped = select_channels_to_be_dropped(channel_names)  # ask user to select
-#     config["channels_to_be_dropped"] = channels_to_be_dropped  # store for rerun function
-#     return raw, config
-
 def update_channels_to_be_dropped(raw, config, file_name):
     """Popup for channels to be dropped *for this file only*.
 

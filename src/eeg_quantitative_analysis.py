@@ -45,7 +45,7 @@ FREQUENCY_BANDS = {
     "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
-    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 30.0)},
+    "broadband": {"pattern": r"0\.5-30|broadband", "range": (0.5, 30.0)},
 }
 
 def validate_frequency_bands():
@@ -165,7 +165,7 @@ def create_gui():
     header = [
         [
             sg.Text(
-                "EEG Quantitative Analysis",
+                "EEG-Pype Quantitative Analysis",
                 font=("Helvetica", 20, "bold"),
                 text_color=HEADER_TEXT,
                 background_color=HEADER_BG,
@@ -749,28 +749,63 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float):
     return freqs, psds.T
 
 
+# def calculate_sampen_for_channels(data, m=2):
+#     """
+#     Calculate Sample Entropy for each channel using antropy.
+
+#     Parameters
+#     ----------
+#     data : numpy array (time points * channels)
+#     m : int
+#         Embedding dimension (order)
+
+#     Returns
+#     -------
+#     numpy.array : Sample Entropy values for each channel
+#     """
+#     n_channels = data.shape[1]
+#     sampen_values = np.zeros(n_channels)
+#     m = np.int32(m)
+
+#     for ch in range(n_channels):
+#         try:
+#             sampen_values[ch] = sample_entropy(data[:, ch], order=m)
+
+#             if ch % 10 == 0:  # Log progress every 10 channels
+#                 logger.info(f"Processed SampEn for {ch}/{n_channels} channels")
+
+#         except Exception:
+#             logger.exception(f"Error calculating SampEn for channel {ch}")
+#             sampen_values[ch] = np.nan
+
+#     return sampen_values
+
 def calculate_sampen_for_channels(data, m=2):
     """
     Calculate Sample Entropy for each channel using antropy.
-
-    Parameters
-    ----------
-    data : numpy array (time points * channels)
-    m : int
-        Embedding dimension (order)
-
-    Returns
-    -------
-    numpy.array : Sample Entropy values for each channel
+    This version includes robust type casting to match Numba's requirements.
     """
     n_channels = data.shape[1]
     sampen_values = np.zeros(n_channels)
 
+    # 1. Force the order parameter to be a 32-BIT INTEGER (i4).
+    #    This is required by the explicit Numba signature in antropy.
+    order_m = np.int32(m)
+
     for ch in range(n_channels):
         try:
-            sampen_values[ch] = sample_entropy(data[:, ch], order=m)
+            # 2. Force the data to be a C-contiguous array of 64-bit floats (f8[:]).
+            #    Numba can be sensitive to array memory layout.
+            channel_data = np.ascontiguousarray(data[:, ch], dtype=np.float64)
 
-            if ch % 10 == 0:  # Log progress every 10 channels
+            if np.std(channel_data) == 0:
+                sampen_values[ch] = 0
+                continue
+
+            # This call now provides arguments with the exact expected types.
+            sampen_values[ch] = sample_entropy(channel_data, order=order_m)
+
+            if ch % 10 == 0:
                 logger.info(f"Processed SampEn for {ch}/{n_channels} channels")
 
         except Exception:
@@ -778,7 +813,6 @@ def calculate_sampen_for_channels(data, m=2):
             sampen_values[ch] = np.nan
 
     return sampen_values
-
 
 def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
