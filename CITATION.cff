@@ -1,16 +1,19 @@
 # YAML 1.2
 ---
 cff-version: "1.2.0"
-title: "eeg_preprocessing_umcu"
+title: "EEG-Pype"
 authors:
-  -
-    family-names: Lodema
+  - family-names: Lodema
     given-names: Yorben
-    orcid: "https://orcid.org/0000-0000-0000-0000"
-date-released: 20??-MM-DD
+    orcid: "https://orcid.org/0000-0001-7122-3939"
+  - family-names: van Dellen
+    given-names: Herman
+  - family-names: van Dellen
+    given-names: Edwin
+date-released: 2024-01-01
 doi: <insert your DOI here>
 version: "0.1.0"
-repository-code: "https://github.com/snorben/eeg_preprocessing_umcu"
+repository-code: "https://github.com/snorben/eeg-pype"
 keywords:
   - eeg
   - preprocessing
