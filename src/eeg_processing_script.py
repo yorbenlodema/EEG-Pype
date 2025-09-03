@@ -1,4 +1,4 @@
-"""@authors:Herman van Dellen en Yorben Lodema."""
+"""@authors: Herman van Dellen en Yorben Lodema."""
 
 import os
 import pickle
@@ -30,7 +30,7 @@ import PySimpleGUI as sg  # noqa: E402
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.1"
+EEG_version = "v4.2"
 
 # initial values
 progress_value1 = 20
@@ -1464,7 +1464,7 @@ def plot_power_spectrum(raw, filtered=False):
 
     Either of the unfiltered or filtered EEG (from 0-60 Hz).
     """
-    fig = raw.compute_psd(fmax=60).plot(picks="eeg", exclude=[])
+    fig = raw.compute_psd(fmax=60).plot(picks="eeg", exclude=[], dB=False)
     axes = fig.get_axes()
     if filtered:
         axes[0].set_title("Band 0.5-47 Hz filtered power spectrum.")
@@ -2031,19 +2031,6 @@ while True:  # @noloop remove
                 filenum = filenum + 1
                 progress_bar_files.UpdateBar(filenum, lfl)  # files
                 # end of for loop over files
-
-        # except Exception as e:
-        #     print(traceback.format_exc())
-        #     print_dict(config)
-        #     # write config to pkl file
-        #     write_config_file(config)
-        #     fn = config["logfile"]
-        #     with open(fn, "a", encoding="UTF-8") as f:
-        #         f.write(traceback.format_exc())
-        #         f.write(window["-FILE_INFO-"].get())
-        #     with open(fn, "w", encoding="UTF-8") as f:
-        #         f.write(window["-RUN_INFO-"].get())
-        #     sg.popup_error_with_traceback("Error - info: ", e)
             
         except Exception as e:
             try:
