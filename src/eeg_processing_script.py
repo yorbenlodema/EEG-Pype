@@ -19,7 +19,6 @@ from eeg_processing_settings import (
     f_font,
     f_size,
     font,
-    my_image,
     settings,
 )
 
@@ -92,13 +91,12 @@ layout = [
                 [sg.VPush(background_color="#E6F3FF")],  # Added background color
                 [
                     sg.Push(background_color="#E6F3FF"),
-                    sg.Column([[my_image]], pad=(0, 0), background_color="#E6F3FF"),
-                ],  # Added background color
+                ],
             ],
             expand_y=True,
             background_color="#E6F3FF",
         )
-    ]  # Added background color to main Column
+    ] 
 ]
 
 
