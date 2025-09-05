@@ -307,6 +307,9 @@ Notes:
 - Large datasets are processed in batches.
 - For large datasets or for calculating entropy measures on long/high sample frequency epochs, consider reducing the number of parallel threads.
 
+## Video example (part 1 shows the basic preprocessing pipeline)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/NGzrvGhQj0g" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
 ## Contributing
 
 If you want to contribute to the development of eeg_preprocessing_umcu,
