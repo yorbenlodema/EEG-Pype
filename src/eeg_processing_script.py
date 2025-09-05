@@ -1457,12 +1457,33 @@ def perform_bad_channels_selection(raw, config):
     return raw, config
 
 
+# def plot_power_spectrum(raw, filtered=False):
+#     """Plot the power spectrum of the separate EEG channels.
+
+#     Either of the unfiltered or filtered EEG (from 0-60 Hz).
+#     """
+#     fig = raw.compute_psd(fmax=60).plot(picks="eeg", exclude=[], dB=False)
+#     axes = fig.get_axes()
+#     if filtered:
+#         axes[0].set_title("Band 0.5-47 Hz filtered power spectrum.")
+#     else:
+#         axes[0].set_title("Unfiltered power spectrum")
+#     fig.tight_layout(rect=[0, 0, 1, 0.95])
+#     fig.canvas.draw()
+
 def plot_power_spectrum(raw, filtered=False):
     """Plot the power spectrum of the separate EEG channels.
 
     Either of the unfiltered or filtered EEG (from 0-60 Hz).
     """
-    fig = raw.compute_psd(fmax=60).plot(picks="eeg", exclude=[], dB=False)
+    # Dynamically set n_fft to aim for a 0.25 Hz resolution
+    sfreq = raw.info['sfreq']
+    n_fft = int(sfreq / 0.25) # e.g., for sfreq=1024, n_fft=4096
+
+    # Ensure n_fft is not larger than the signal length
+    n_fft = min(n_fft, len(raw.times))
+
+    fig = raw.compute_psd(fmax=60, n_fft=n_fft).plot(picks="eeg", exclude=[], dB=False)
     axes = fig.get_axes()
     if filtered:
         axes[0].set_title("Band 0.5-47 Hz filtered power spectrum.")
