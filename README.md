@@ -49,8 +49,6 @@ If this is not the case, these channels might be included in operations like ave
 
 The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
 
-There is currently no solution for the situation where EEG files that are loaded simultaneously (in the same batch) have different channel names with respect to channel dropping. As long as you do not drop any channels (drop at the batch level, not interpolate) this is no problem, and you should even be able to rename the channel names separately per file. However, the batch-level channel drop functionality expects the same channel names between files, breaking the execution of the script when this is not the case.
-
 ## Short video overviews
 [![EEG-Pype Part 1](http://img.youtube.com/vi/NGzrvGhQj0g/0.jpg)](http://www.youtube.com/watch?v=NGzrvGhQj0g "EEG-Pype Part 1")
 
