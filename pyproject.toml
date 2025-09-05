@@ -3,9 +3,9 @@ requires = ["setuptools>=64.0.0", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-authors = [{ name = "Yorben Lodema", email = "d.y.lodema-2@umcutrecht.nl" }]
+authors = [{ name = "Yorben Lodema", email = "github.book503@passmail.com" }, { name = "Herman van Dellen"}]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
@@ -24,11 +24,13 @@ dependencies = [
     "openpyxl",
     "nibabel",
     "antropy",
+    "networkx",
+    "psutil",
 ]
-description = "eeg preprocessing"
-keywords = ["eeg", "preprocessing"]
+description = "Resting-state EEG preprocessing and analysis"
+keywords = ["eeg", "preprocessing", "resting-state"]
 license = { file = "LICENSE" }
-name = "eeg_preprocessing_umcu"
+name = "EEG-Pype"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 version = "0.1.0"
@@ -46,16 +48,16 @@ dev = [
 publishing = ["build", "twine", "wheel"]
 
 [project.urls]
-Repository = "https://github.com/yorbenlodema/eeg_preprocessing_umcu"
-Issues = "https://github.com/yorbenlodema/eeg_preprocessing_umcu/issues"
-Changelog = "https://github.com/yorbenlodema/eeg_preprocessing_umcu/CHANGELOG.md"
+Repository = "https://github.com/yorbenlodema/EEG-Pype"
+Issues = "https://github.com/yorbenlodema/EEG-Pype/issues"
+Changelog = "https://github.com/yorbenlodema/EEG-Pype/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["src/eeg_preprocessing_umcu"]
+source = ["src/EEG_Pype"]
 command_line = "-m pytest"
 
 [tool.tox]
@@ -72,7 +74,7 @@ extras = dev
 current_version = "0.1.0"
 
 [[tool.bumpversion.files]]
-filename = "src/eeg_preprocessing_umcu/__init__.py"
+filename = "src/EEG-Pype/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
