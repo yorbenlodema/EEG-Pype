@@ -49,7 +49,7 @@ FREQUENCY_BANDS = {
     "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
-    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 30.0)},
+    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 47.0)},
 }
 
 def validate_frequency_bands():
@@ -93,20 +93,7 @@ class MemoryMonitor:  # noqa: D101
 
     @staticmethod
     def check_concatenation_safety(data_size, num_epochs):
-        """
-        Check if concatenation is likely to exceed memory limits.
-
-        Parameters
-        ----------
-        data_size : int
-            Size of one epoch in bytes
-        num_epochs : int
-            Number of epochs to concatenate
-
-        Returns
-        -------
-        bool : True if safe to proceed, False if likely to exceed memory
-        """
+        """Check if concatenation is likely to exceed memory limits."""
         try:
             # Get system memory info
             system_memory = psutil.virtual_memory()
@@ -475,21 +462,10 @@ def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_n
 
 
 def extract_freq_band(condition):
-    """Parse the filename or condition string to identify frequency band.
+    """
+    Parse the filename or condition string to identify frequency band.
 
     Based on the FREQUENCY_BANDS config.
-
-    Parameters
-    ----------
-    condition : str
-        The substring from the epoch filename (e.g., "8.0-13.0 Hz")
-        or condition text that includes the frequency band.
-
-    Returns
-    -------
-    str
-        The band name (e.g., "alpha", "theta", "delta", etc.)
-        or "unknown" if no match is found.
     """
     for band_name, band_info in FREQUENCY_BANDS.items():
         pattern = band_info["pattern"]
@@ -507,16 +483,12 @@ def extract_freq_band(condition):
 def is_broadband_condition(condition):
     """
     Check if condition matches broadband pattern from FREQUENCY_BANDS config.
-
-    Returns
-    -------
-    bool
-        True if condition matches broadband pattern, False otherwise
     """
     if "broadband" not in FREQUENCY_BANDS:
         return False
     pattern = FREQUENCY_BANDS["broadband"]["pattern"]
     return bool(re.search(pattern, condition, re.IGNORECASE))
+
 
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
     """Save connectivity matrix to CSV with proper channel names, prepending subject to the filename."""
@@ -542,6 +514,7 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
 
     df.to_csv(filepath)
     return filepath
+
 
 def linear_detrend(data):
     """Apply linear detrending to each channel."""
@@ -789,18 +762,6 @@ def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
 
     Follows Pincus 1995, with optimized implementation using vectorization.
-
-    Parameters
-    ----------
-    data : numpy array (time points * channels)
-    m : int
-        Embedding dimension (length of compared runs)
-    r : float
-        Tolerance (typically 0.25 * std of the data)
-
-    Returns
-    -------
-    numpy.array : Approximate Entropy values for each channel
     """
     n_channels = data.shape[1]
     apen_values = np.zeros(n_channels)
@@ -833,19 +794,6 @@ def calculate_apen_for_channels(data, m=2, r=0.25):
 def _phi_vectorized(x, m, r):
     """
     Vectorized calculation of Φᵐ(r) following Pincus 1995.
-
-    Parameters
-    ----------
-    x : array
-        Time series data
-    m : int
-        Embedding dimension
-    r : float
-        Tolerance threshold
-
-    Returns
-    -------
-    float : Φᵐ(r) value
     """
     N = len(x)
     N_m = N - m + 1
@@ -965,25 +913,10 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
         logger.exception("Error in spectral variability calculation")
         return None
 
+
 def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, polyorder: int = 2) -> np.ndarray:
     """
     Apply Savitzky-Golay smoothing to a power spectrum.
-
-    Parameters:
-    -----------
-    power_spectrum : np.ndarray
-        The 1D power spectrum array to be smoothed.
-    window_length : int, optional
-        The length of the filter window (i.e., the number of coefficients).
-        Must be a positive odd integer. Default is 5.
-    polyorder : int, optional
-        The order of the polynomial used to fit the samples.
-        Must be less than window_length. Default is 2.
-
-    Returns:
-    --------
-    np.ndarray
-        The smoothed power spectrum.
     """
     if window_length % 2 == 0:
         raise ValueError("window_length must be an odd integer.")
@@ -996,6 +929,7 @@ def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, p
     smoothed_spectrum = signal.savgol_filter(power_spectrum, window_length, polyorder)
     return smoothed_spectrum
 
+
 def find_peaks(x, y, threshold_ratio=0.5):
     """Find significant peaks using relative maxima and prominence threshold."""
     peak_indices = signal.argrelextrema(y, np.greater)[0]
@@ -1005,24 +939,10 @@ def find_peaks(x, y, threshold_ratio=0.5):
 
     return x[significant_peaks], y[significant_peaks]
  
+    
 def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), sg_window_length=5, sg_polyorder=2):
     """
     Calculate peak frequency using pre-computed PSD with improved peak detection.
-
-    Parameters
-    ----------
-    frequencies : numpy array
-        Frequency values
-    psd : numpy array
-        Power spectral density (frequencies * channels)
-    freq_range : tuple
-        Frequency range to search for peaks (min_freq, max_freq)
-    smoothing_window : int
-        Window size for smoothing
-
-    Returns
-    -------
-    numpy array: Peak frequencies for each channel
     """
     num_channels = psd.shape[1]
     peak_frequencies = np.zeros(num_channels)
@@ -2579,7 +2499,6 @@ def save_results_to_excel(
     """
     Save results to Excel with organized columns by condition.
 
-    Keeps original logic:
       - Some features only generated if broadband epochs exist.
       - Broadband entropy/JPE measures are allowed, but separate
         broadband power columns are skipped.
