@@ -51,6 +51,9 @@ The frequency band settings now include the option to split the alpha band (into
 
 There is currently no solution for the situation where EEG files that are loaded simultaneously (in the same batch) have different channel names with respect to channel dropping. As long as you do not drop any channels (drop at the batch level, not interpolate) this is no problem, and you should even be able to rename the channel names separately per file. However, the batch-level channel drop functionality expects the same channel names between files, breaking the execution of the script when this is not the case.
 
+## Short video overviews
+[![EEG-Pype Part 1](http://img.youtube.com/vi/NGzrvGhQj0g/0.jpg)](http://www.youtube.com/watch?v=NGzrvGhQj0g "EEG-Pype Part 1")
+
 ## Installation
 
 This guide will walk you through the process of setting up the EEG Preprocessing Tool using Miniconda. Miniconda provides an easy way to create isolated Python environments and manage package dependencies.
@@ -306,9 +309,6 @@ Notes:
 - The tool includes memory monitoring.
 - Large datasets are processed in batches.
 - For large datasets or for calculating entropy measures on long/high sample frequency epochs, consider reducing the number of parallel threads.
-
-## Video example (part 1 shows the basic preprocessing pipeline)
-<iframe width="560" height="315" src="https://www.youtube.com/embed/NGzrvGhQj0g" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## Contributing
 
