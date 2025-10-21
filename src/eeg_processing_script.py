@@ -23,25 +23,25 @@ from eeg_processing_settings import (
 )
 
 PySimpleGUI_License = "e1yWJaMdasWkN4l4b7nYNllfVqHolVwwZUS5IA6pIekqRAp7cf3FRNyZakWgJy1ldnGXlZv7bhi9Ihs0Ifkvxbp2YA2KVOuKct2IVPJHRsC1IZ6tMETZcDyzOjDDQI2KMEzVIM3WMoSXw2izTBGmlgjvZrWx5GzDZHUvR0lZcOGCxBvSeXWR1OlFbsnKRlWGZkXNJYzXaLWC9TuQIljdo8iaNpSW4GwlIiiBwZi0TOmBFwtvZnUCZrpQc3ntNF0IIcj3ozi6W3Wj9QycYnmfV7u4ImirwWiLTimEFutRZ8Ujxih2c238QuirOCi9JAMabp29R9lzbBWSE9i2LWCrJkDfbX2A1vwVYAWY5y50IEjGojizI4itwdikQk3XVdzJdnGF94tYZjXDJnJhRpCNIr6RIijsQVxDNgjmYQyvIki5wWitRgGVFK0BZqUol9z8cU3cVIlyZaCkIY6uITj1IcwxMcjgQytEMtTZAztcMnD3k0ieLgCGJwEBYvXXRlldRuXLhgwwavX0J8lycMydIL6QI5j7IVwwMCjZYotyMgTmA6tQMmDUkZivLzCZJLFEbZWOFGp1biEHFjkAZ5HMJAlIcP3RMtinOoiaJJ5gbP3JJRimZIWn50sZbd2CRjlxbfWUFyAhcRHHJNv7d4Gf94uFLgmg1TlPIpilwAihS8VkBBBnZ8GER2yKZeX9NmzdIwjqociiMqTDQjz6LYj8Eky4MqSc4gydM5zvkfueMQTlEuiOf9Qt=e=R474cb6624d46e0ffc4738da48ec40ec6c752493664e4752ff53db807cace7e4621380eceb4d5de156b785a4403be2968b7a6a22be5c76e8b9cda0494edde848854d6e93a408dc85a76a78ee44989fdb316aafe12f99184914c3eec2accd1689a7983cb8f627bbf1c1ce62f546cc997b117824f4bed3d811de3d6eefd462b467e4bf7bd325190f51155d825c4ba5f300245d7b67550db63b79c8ffc6a34adf6fda39fcd06e2ab1406812358a35ac9f95eca70f2369b30c64b8b61a8e5ae61aa337084058d6616a62e06a4d4a75f10498e2d8a535e4f9dcc1ab389b8bb1a1528df10f2e8b9137f1d9b337c4dca8e20eec88414377e4e374e231b63e0eeae6d2490a0960db48c15809ff54ae57ae06fb1e9679b64dbba7458a9ae271203fa38d2582b5492c92269e8af8ec7cd3e88b50fbaa8a616fa3091ce0a1b5a90abe67666dc7c30d83f4c175d759481f7bda16854a7c1c52148763b845bba4303a8ea97104cdc0258b227c08f59d18db8b753b21f5caa0a47c28958d09ed5cd65c86741a5424a118cb0336ee21aa8e7caa2dc99a093c8d4ec1f77ebf0edebc4b4a59b2014bd44597b3a46b97b3471f8ef2314fe0cc2786e03a1c1881fe3a9c5fdf5b993cde580024846d9921808d77889b25eeea64761c94b44582e0b630a8b888e6d51574b89e1f4fa872f61d1a4842e09ea9db5cd5ae5ed40fc2a96e59b5c62c72d9734b0"  # noqa: E501
-import PySimpleGUI as sg  # noqa: E402
+import PySimpleGUI as sg
 
 # Set the working directory to the script directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.2"
+EEG_version = "v4.3"
 
 # initial values
 progress_value1 = 20
 progress_value2 = 20
 
-button_color = ("#FFFFFF", "#2196F3")  # White text on blue button
-exit_button_color = ("#FFFFFF", "indianred")  # White text on red button
+button_color = ("#FFFFFF", "#2196F3")
+exit_button_color = ("#FFFFFF", "indianred")
 button_style = {
     "border_width": 0,
     "button_color": button_color,
     "pad": (10, 5),
-    "mouseover_colors": ("#FFFFFF", "#1976D2"),  # Slightly darker blue on hover
+    "mouseover_colors": ("#FFFFFF", "#1976D2"),
 }
 
 layout = [
@@ -109,28 +109,24 @@ def print_dict(_dict):  # pprint and json.print do not work well with composite 
 def write_config_file(config):
     """Write config file in .pkl format."""
     fn = config["config_file"]
-    config.pop("raw", None)  # remove from dict if exists
-    config.pop("raw_temp", None)  # remove from dict if exists
-    config.pop("raw_temp_filtered", None)  # remove from dict if exists
-    config.pop("raw_interpolated", None)  # remove from dict if exists
-    config.pop("raw_ica", None)  # remove from dict if exists
-    config.pop("ica", None)  # remove from dict if exists
-    config.pop("file_path", None)  # remove from dict, this is the current file_path in loop
+    config.pop("raw", None)
+    config.pop("raw_temp", None)
+    config.pop("raw_temp_filtered", None)
+    config.pop("raw_interpolated", None)
+    config.pop("raw_ica", None)
+    config.pop("ica", None)
+    config.pop("file_path", None)
     with open(fn, "wb") as f:
         pickle.dump(config, f)
     return fn
 
-# def load_config(fn):
-#     """Read config file in .pkl format."""
-#     with open(fn, "rb") as f:
-#         return pickle.load(f)  # noqa: S301 #TODO: check if using json.load is better
     
 def load_config(fn):
     """Read config file in .pkl format and upgrade legacy keys."""
     with open(fn, "rb") as f:
-        cfg = pickle.load(f)                               # noqa: S301
+        cfg = pickle.load(f)
 
-    # ─── Compatibility: move old batch-level drop list into per-file keys ───
+    # Compatibility: move old batch-level drop list into per-file keys
     if "channels_to_be_dropped" in cfg:
         legacy_drop = cfg.pop("channels_to_be_dropped")
         for fname in cfg.get("input_file_names", []):
@@ -181,6 +177,7 @@ def load_config_file():
     msg = "\nConfig " + config_file + " loaded for rerun\n"
     window["-FILE_INFO-"].update(msg + "\n", append=True)
     return config
+
 
 def ask_apply_output_filtering(config):
     """Ask if user wants to filter output."""
@@ -744,7 +741,6 @@ def show_channel_correction_window(raw, montage_name):
     def create_table_data(current, expected):
         """Create table data with matched channels aligned."""
         expected_set = set(expected)
-        current_set = set(current)  # noqa: F841 #TODO: is `current_set` needed? Can't this line just be `set(current)`?
 
         # First, handle exact matches
         matched_pairs = []
@@ -1456,42 +1452,113 @@ def perform_bad_channels_selection(raw, config):
     config[file_name, "bad"] = raw.info["bads"]  # *1 ### Aparte bad_channels variable is nu weg
     return raw, config
 
-
-# def plot_power_spectrum(raw, filtered=False):
-#     """Plot the power spectrum of the separate EEG channels.
-
-#     Either of the unfiltered or filtered EEG (from 0-60 Hz).
-#     """
-#     fig = raw.compute_psd(fmax=60).plot(picks="eeg", exclude=[], dB=False)
-#     axes = fig.get_axes()
-#     if filtered:
-#         axes[0].set_title("Band 0.5-47 Hz filtered power spectrum.")
-#     else:
-#         axes[0].set_title("Unfiltered power spectrum")
-#     fig.tight_layout(rect=[0, 0, 1, 0.95])
-#     fig.canvas.draw()
-
 def plot_power_spectrum(raw, filtered=False):
-    """Plot the power spectrum of the separate EEG channels.
+    """Plot the power spectrum of the separate EEG channels using Welch's method.
 
     Either of the unfiltered or filtered EEG (from 0-60 Hz).
     """
-    # Dynamically set n_fft to aim for a 0.25 Hz resolution
+    # Set n_fft to control resolution. e.g., for 512 Hz, 2048 gives 0.25 Hz res.
+    # For 1024 Hz, 4096 gives 0.25 Hz res.
     sfreq = raw.info['sfreq']
-    n_fft = int(sfreq / 0.25) # e.g., for sfreq=1024, n_fft=4096
-
-    # Ensure n_fft is not larger than the signal length
-    n_fft = min(n_fft, len(raw.times))
-
-    fig = raw.compute_psd(fmax=60, n_fft=n_fft).plot(picks="eeg", exclude=[], dB=False)
+    n_fft = int(sfreq / 0.25) # Aim for 0.25 Hz resolution
+    n_fft = min(n_fft, len(raw.times)) # Ensure n_fft is not too large
+    
+    # Use method='welch' (which is the default for raw)
+    fig = raw.compute_psd(
+        method='welch', 
+        fmax=60, 
+        n_fft=n_fft,
+        n_overlap=n_fft // 2, # Common practice for 50% overlap
+        n_jobs=1 
+    ).plot(picks="eeg", exclude=[], dB=True)
+    
     axes = fig.get_axes()
     if filtered:
-        axes[0].set_title("Band 0.5-47 Hz filtered power spectrum.")
+        axes[0].set_title("Band 0.5-47 Hz filtered power spectrum (Welch)")
     else:
-        axes[0].set_title("Unfiltered power spectrum")
+        axes[0].set_title("Unfiltered power spectrum (Welch)")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.canvas.draw()
 
+def plot_clean_psd(raw_obj, filtered=False, epoch_duration=6.0, sd_threshold=2.0):
+    """
+    Creates temporary 6s epochs, rejects outliers based on 2 SDs of
+    peak-to-peak amplitude, and then plots the PSD using Welch's method.
+
+    This avoids high-amplitude artifacts from skewing the PSD plot.
+    """
+
+    sfreq = raw_obj.info["sfreq"]
+
+    # Create temporary epochs
+    events = mne.make_fixed_length_events(raw_obj, duration=epoch_duration)
+    try:
+        epochs = mne.Epochs(
+            raw_obj,
+            events=events,
+            tmin=0.0,
+            tmax=(epoch_duration - (1 / sfreq)),  # Match the epoching function
+            baseline=None,
+            preload=True,
+            reject=None,  # We do manual rejection
+            detrend=1,  # Match the epoching function
+            verbose=False,
+        )
+    except ValueError as e:
+        print(f"Warning: Could not create temp epochs for PSD, plotting raw. Error: {e}")
+        plot_power_spectrum(raw_obj, filtered=filtered)  # Fallback to old method
+        return
+
+    if len(epochs) == 0:
+        print("Warning: No epochs remained after initial event creation. Plotting raw PSD.")
+        plot_power_spectrum(raw_obj, filtered=filtered)  # Fallback
+        return
+
+    # Calculate PTP amplitude for each epoch
+    data = epochs.get_data(picks="eeg")
+    ptp = np.max(data, axis=2) - np.min(data, axis=2)  # (n_epochs, n_channels)
+    epoch_ptp_max = np.max(ptp, axis=1)  # (n_epochs,)
+
+    # Calculate rejection threshold
+    mean_ptp = np.mean(epoch_ptp_max)
+    std_ptp = np.std(epoch_ptp_max)
+    rejection_threshold = mean_ptp + sd_threshold * std_ptp
+
+    # Find and drop bad epochs
+    bad_indices = np.where(epoch_ptp_max > rejection_threshold)[0]
+    epochs.drop(bad_indices)
+
+    # Check if any epochs are left
+    if len(epochs) < 5:
+        print(f"Warning: Too many {len(bad_indices)} epochs were rejected by SD threshold. Plotting full raw PSD.")
+        plot_power_spectrum(raw_obj, filtered=filtered)  # Fallback
+        return
+        
+    # Use Welch, and set n_fft to match the other plot for comparability
+    n_fft = int(sfreq / 0.25) # Aim for 0.25 Hz resolution
+    n_fft = min(n_fft, epochs.times.shape[0]) # n_fft cannot be longer than the epoch
+
+    fig = epochs.compute_psd(
+        method='welch', 
+        fmax=60, 
+        n_fft=n_fft,
+        n_overlap=n_fft // 2,
+        n_jobs=1
+    ).plot(picks="eeg", exclude=[], dB=True)
+    
+    axes = fig.get_axes()
+
+    title_prefix = "Filtered" if filtered else "Unfiltered"
+    axes[0].set_title(
+        f"{title_prefix} (SD-Rejected) Power Spectrum (Welch)\n"
+        f"(Ignored {len(bad_indices)} / {len(events)} epochs in PSD calculation)"
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.9])  # Adjusted rect for longer title
+    fig.canvas.draw()
+
+    print(
+        f"PSD Plot: Rejected {len(bad_indices)} temporary epochs with PTP > {sd_threshold} SDs from mean."
+    )
 
 def perform_temp_down_sampling(raw, config):
     """Downsample the temporary raw EEG.
@@ -1701,7 +1768,7 @@ def save_whole_EEG_to_txt(raw_output, config, base, scalings=None, filtering=Fal
 ##################################################################################
 
 window = sg.Window(
-    "MNE-python based EEG Preprocessing",
+    "EEG-Pype (based on MNE-Python)",
     layout,
     location=(30, 30),
     size=(1000, 775),
@@ -1809,14 +1876,6 @@ while True:  # @noloop remove
                 window["-FILE_INFO-"].update(msg + "\n", append=True)
 
                 raw, config = create_raw(config, montage, no_montage_patterns)
-
-                # if config["rerun"] == 0 and config["channels_to_be_dropped_selected"] == 0:
-                #     raw, config = update_channels_to_be_dropped(raw, config)
-
-                #     config["channels_to_be_dropped_selected"] = 1
-                
-                # # Entirely drop excluded channels
-                # raw.drop_channels(config["channels_to_be_dropped"])
                 
                 # Channel dropping – per-file
                 drop_key = (file_name, "drop")
@@ -1832,6 +1891,7 @@ while True:  # @noloop remove
                 raw_temp = raw.copy()
 
                 plot_power_spectrum(raw_temp, filtered=False)
+                plot_clean_psd(raw_temp, filtered=False)
 
                 raw_temp.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4,
                                 h_trans_bandwidth=1.5, picks="eeg")
@@ -1855,7 +1915,7 @@ while True:  # @noloop remove
                 if config["apply_beamformer"]:
                     spatial_filter = perform_beamform(raw_temp, config)
 
-                if config["sample_frequency"] > 1000:  # noqa: PLR2004
+                if config["sample_frequency"] > 1000: 
                     raw_temp, temporary_sample_f = perform_temp_down_sampling(raw_temp, config)
                 else:
                     temporary_sample_f = config["sample_frequency"]
@@ -1864,6 +1924,7 @@ while True:  # @noloop remove
 
                 if config["apply_epoch_selection"]:
                     plot_power_spectrum(raw_temp, filtered=True)
+                    plot_clean_psd(raw_temp, filtered=True)
 
                 if config["apply_epoch_selection"] and (config["rerun"] == 0 or rerun_no_previous_epoch_selection == 1):
                     config = perform_epoch_selection(raw_temp, config, temporary_sample_f)
@@ -2047,8 +2108,23 @@ while True:  # @noloop remove
                                 )
 
                 write_config_file(config)
+
+                # Save intermediate log file content after each file is processed
+                try:
+                    run_info_content = window["-RUN_INFO-"].get()
+                    file_info_content = window["-FILE_INFO-"].get()
+
+                    with open(config["logfile"], "w", encoding="utf-8") as f:
+                        f.write("--- RUN INFO (intermediate save) ---\n")
+                        f.write(run_info_content)
+                        f.write("\n\n--- FILE INFO (intermediate save) ---\n")
+                        f.write(file_info_content)
+                except Exception as log_save_err:
+                    # If logging fails, don't crash the batch. Print warning instead.
+                    print(f"CRITICAL WARNING: Could not save intermediate log file: {log_save_err}")
+
                 filenum = filenum + 1
-                progress_bar_files.UpdateBar(filenum, lfl)  # files
+                progress_bar_files.UpdateBar(filenum, lfl)
                 # end of for loop over files
             
         except Exception as e:
