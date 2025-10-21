@@ -25,7 +25,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyiauWyJB1gdyGQlPvXbgi7IAswIIk3xnpjYF2QVPuccn2aVNJdRhCnI96RMUTtcdzOMYzIM05eNLjWQjyxMQi8wGirTkGxl2jUZcWc5YzYZOUyRXllcQGExvvFeDWz1jlVbVnEROW3ZzXIJGzUalWp9huwImjmojivNhSr4Ew9ItiOwHikTXmpFxthZIUrZ8pfcCnFNQ0iIJjyokihWeWm95yfYymHVJu2I4iqwxi5T9mAFatLZaUkxphHcv3DQRi3OcipJZMBbN2ZR6lvbeWEEkiuL7CfJSDIbt2n1mwBY8WY555qIsj8oriYISiJwNiwQq3GVvzEdaGL9VtyZMXbJgJIRnCrI06II1jCQNxDNSj8YEyPICiNwyiaR1GVFw0VZOUeltz1cW3EVFlUZcC3IG6nIUj3ICwjM3jQQ6tWMUT5IAtLMADTUdi8L1ClJQERYEXfRelmR0XBhDwTa5XyJalIcXyoIX6aIvj3ICwSM3jcYrtcMYT2AFtgMMDTkNiNL4CtJKFIbDWmFQpNbUEFFckFZeHrJVlRcY3DM9isOmicJ258bD3qJjiKZVWp5Psab62lRPllb7WbFQAbcOHtJsv6dUGm9EueLXmv1ylIIliowFiAShVhBZBwZuGnRVyXZrXMNdzTI9j7osioM5T8QxztLBjCEoyPMvSI4XySMRzxk3umMeT5MeisfZQJ=c=02504c6fb7ca09721d288ae69f8237c96a99697e5b723e543938c4be810e2615f6fa037769c1edbd61ae40a244556b95fdfc2843df8e3807e955bc2c1d4be04c7022e2aa84c8eef696a9c6a61297e79cc4f465fb5e94513820c17814b2d35afadfa00653a9157afbad05ce088b890ca447c12c1df95d67e61ceed0b57d99ee7f26bfca445ad111393dab2dd1b6bee992510a1e973d0c6fae38f654816cc8de05ce7a79081d2029d636be38fb06ff7c68bfa0bdf080c7bb349a71ec74894e9f746bcbe58a67482485609109ec0a416582fc50f3500f55d5a021e7ea0ce4aafa6a207c77b80c2b48484e70314ef2b1a14970f110336f4c68eed12b49b4f3560b9e48eca892473d97b6ccb712cd086b0baa6aef3aa59be23f951a3476fbc5824402af301b988f410cf050f722fa3f2995ae68d4852645384eccec7841c10fe44b08102cc32a6d94a5854d0a148cecf8d25a51067db2e71842845dd715141ca15f1a5dd475bf4cba5afb23e794e77a53b89590ea0a37e638d46c73c869f4957c4a445d813a94167f3aaca7b58ce66ccb0c605e4820cc661c3d2ae832e41ee9fd46357fb40d26e103d4d747794f8548c27c363e096d495269740a6c08e5f936aec6c689a5a18694b24c37268c9c18760d063ad62b96d505b01074f81d7bb94d456c0d2bca0dd8b96b2246167bb1d0ce36a44a4ec051d22a72260ebbf910b375e511158"  # noqa: E501
 import PySimpleGUI as sg  # noqa: E402
 
-EEG_version = "v4.2"
+EEG_version = "v4.3"
 
 logger = logging.getLogger(__name__)
 
@@ -2131,12 +2131,18 @@ def process_subject_condition(args):
 
         if calc_power and power_values:
             for band_name in FREQUENCY_BANDS:
-                results[f"{band_name}_abs_power"] = np.mean(power_values[f"{band_name}_abs_power"])
-                results[f"{band_name}_rel_power"] = np.mean(power_values[f"{band_name}_rel_power"])
-
+                abs_power_list = power_values[f"{band_name}_abs_power"]
+                rel_power_list = power_values[f"{band_name}_rel_power"]
+                
+                results[f"{band_name}_abs_power"] = np.mean(abs_power_list) if abs_power_list else np.nan
+                results[f"{band_name}_rel_power"] = np.mean(rel_power_list) if rel_power_list else np.nan
+        
         if calc_peak:
-            results["peak_frequency"] = np.mean(power_values["peak_frequency"])
-            results["channels_without_peak"] = np.mean(power_values["channels_without_peak"])
+            peak_freq_list = power_values["peak_frequency"]
+            no_peak_list = power_values["channels_without_peak"]
+        
+            results["peak_frequency"] = np.mean(peak_freq_list) if peak_freq_list else np.nan
+            results["channels_without_peak"] = np.mean(no_peak_list) if no_peak_list else np.nan
 
         if calc_sv:
             for band_name in FREQUENCY_BANDS:
