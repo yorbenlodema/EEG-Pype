@@ -13,19 +13,19 @@ from multiprocessing import Pool, cpu_count
 from typing import Optional
 
 import mne
-import networkx as nx  # TODO: add to dependencies
+import networkx as nx
 import numpy as np
 import pandas as pd
-import psutil  # TODO: add to dependencies
+import psutil
 from antropy import sample_entropy
 from scipy import signal
 from scipy.signal import hilbert
 from scipy.sparse.csgraph import minimum_spanning_tree
 
 PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyiauWyJB1gdyGQlPvXbgi7IAswIIk3xnpjYF2QVPuccn2aVNJdRhCnI96RMUTtcdzOMYzIM05eNLjWQjyxMQi8wGirTkGxl2jUZcWc5YzYZOUyRXllcQGExvvFeDWz1jlVbVnEROW3ZzXIJGzUalWp9huwImjmojivNhSr4Ew9ItiOwHikTXmpFxthZIUrZ8pfcCnFNQ0iIJjyokihWeWm95yfYymHVJu2I4iqwxi5T9mAFatLZaUkxphHcv3DQRi3OcipJZMBbN2ZR6lvbeWEEkiuL7CfJSDIbt2n1mwBY8WY555qIsj8oriYISiJwNiwQq3GVvzEdaGL9VtyZMXbJgJIRnCrI06II1jCQNxDNSj8YEyPICiNwyiaR1GVFw0VZOUeltz1cW3EVFlUZcC3IG6nIUj3ICwjM3jQQ6tWMUT5IAtLMADTUdi8L1ClJQERYEXfRelmR0XBhDwTa5XyJalIcXyoIX6aIvj3ICwSM3jcYrtcMYT2AFtgMMDTkNiNL4CtJKFIbDWmFQpNbUEFFckFZeHrJVlRcY3DM9isOmicJ258bD3qJjiKZVWp5Psab62lRPllb7WbFQAbcOHtJsv6dUGm9EueLXmv1ylIIliowFiAShVhBZBwZuGnRVyXZrXMNdzTI9j7osioM5T8QxztLBjCEoyPMvSI4XySMRzxk3umMeT5MeisfZQJ=c=02504c6fb7ca09721d288ae69f8237c96a99697e5b723e543938c4be810e2615f6fa037769c1edbd61ae40a244556b95fdfc2843df8e3807e955bc2c1d4be04c7022e2aa84c8eef696a9c6a61297e79cc4f465fb5e94513820c17814b2d35afadfa00653a9157afbad05ce088b890ca447c12c1df95d67e61ceed0b57d99ee7f26bfca445ad111393dab2dd1b6bee992510a1e973d0c6fae38f654816cc8de05ce7a79081d2029d636be38fb06ff7c68bfa0bdf080c7bb349a71ec74894e9f746bcbe58a67482485609109ec0a416582fc50f3500f55d5a021e7ea0ce4aafa6a207c77b80c2b48484e70314ef2b1a14970f110336f4c68eed12b49b4f3560b9e48eca892473d97b6ccb712cd086b0baa6aef3aa59be23f951a3476fbc5824402af301b988f410cf050f722fa3f2995ae68d4852645384eccec7841c10fe44b08102cc32a6d94a5854d0a148cecf8d25a51067db2e71842845dd715141ca15f1a5dd475bf4cba5afb23e794e77a53b89590ea0a37e638d46c73c869f4957c4a445d813a94167f3aaca7b58ce66ccb0c605e4820cc661c3d2ae832e41ee9fd46357fb40d26e103d4d747794f8548c27c363e096d495269740a6c08e5f936aec6c689a5a18694b24c37268c9c18760d063ad62b96d505b01074f81d7bb94d456c0d2bca0dd8b96b2246167bb1d0ce36a44a4ec051d22a72260ebbf910b375e511158"  # noqa: E501
-import PySimpleGUI as sg  # noqa: E402
+import PySimpleGUI as sg
 
-EEG_version = "v4.3"
+EEG_version = "v4.3.1"
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ BATCH_SIZE = 10  # Number of subjects to process in parallel
 DEFAULT_THREADS = max(1, int(cpu_count() * 0.7))  # Use 80% of cores, no max limit
 
 
-class MemoryMonitor:  # noqa: D101
+class MemoryMonitor:
     @staticmethod
     def get_memory_usage():
         """Get current memory usage percentage."""
@@ -457,7 +457,6 @@ def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_n
     # Create base folders
     for folder in folders.values():
         os.makedirs(folder, exist_ok=True)
-
     return folders
 
 
@@ -489,7 +488,6 @@ def is_broadband_condition(condition):
     pattern = FREQUENCY_BANDS["broadband"]["pattern"]
     return bool(re.search(pattern, condition, re.IGNORECASE))
 
-
 def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, channel_names, level_type=None):
     """Save connectivity matrix to CSV with proper channel names, prepending subject to the filename."""
     subject_folder = os.path.join(folder_path, subject)
@@ -515,11 +513,9 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
     df.to_csv(filepath)
     return filepath
 
-
 def linear_detrend(data):
     """Apply linear detrending to each channel."""
     return signal.detrend(data, axis=0, type="linear")
-
 
 def calculate_PSD(
     data: np.ndarray,
@@ -628,7 +624,6 @@ def calculate_PSD(
 
     return result
 
-
 def _calculate_welch_psd(
     data: np.ndarray, fs: float, window_length_ms: float = 1000, overlap_percent: float = 50
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -684,7 +679,6 @@ def _calculate_welch_psd(
 
     return frequencies, psd
 
-
 def _calculate_fft_psd(data: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
     n_samples = data.shape[0]
     n_channels = data.shape[1]
@@ -709,7 +703,6 @@ def _calculate_fft_psd(data: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndar
 
     return frequencies, psd
 
-
 def _calculate_multitaper_psd(data: np.ndarray, fs: float):
     """Calculate PSD using MNE's multitaper implementation."""
     psds, freqs = mne.time_frequency.psd_array_multitaper(
@@ -722,7 +715,6 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float):
     )
 
     return freqs, psds.T
-
 
 def calculate_sampen_for_channels(data, m=2):
     """
@@ -757,7 +749,6 @@ def calculate_sampen_for_channels(data, m=2):
 
     return sampen_values
 
-
 def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
 
@@ -790,7 +781,6 @@ def calculate_apen_for_channels(data, m=2, r=0.25):
 
     return apen_values
 
-
 def _phi_vectorized(x, m, r):
     """
     Vectorized calculation of Φᵐ(r) following Pincus 1995.
@@ -817,7 +807,6 @@ def _phi_vectorized(x, m, r):
 
     # Calculate Φᵐ(r) with small constant to avoid log(0)
     return np.mean(np.log(C + 1e-10))
-
 
 def calculate_spectral_variability(data_values, fs, window_length=2000):
     """Calculate spectral variability per channel from concatenated broadband data.
@@ -913,7 +902,6 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
         logger.exception("Error in spectral variability calculation")
         return None
 
-
 def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, polyorder: int = 2) -> np.ndarray:
     """
     Apply Savitzky-Golay smoothing to a power spectrum.
@@ -929,7 +917,6 @@ def smooth_spectrum_savgol(power_spectrum: np.ndarray, window_length: int = 5, p
     smoothed_spectrum = signal.savgol_filter(power_spectrum, window_length, polyorder)
     return smoothed_spectrum
 
-
 def find_peaks(x, y, threshold_ratio=0.5):
     """Find significant peaks using relative maxima and prominence threshold."""
     peak_indices = signal.argrelextrema(y, np.greater)[0]
@@ -939,7 +926,6 @@ def find_peaks(x, y, threshold_ratio=0.5):
 
     return x[significant_peaks], y[significant_peaks]
  
-    
 def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), sg_window_length=5, sg_polyorder=2):
     """
     Calculate peak frequency using pre-computed PSD with improved peak detection.
@@ -1005,7 +991,6 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), sg_window
 
     return peak_frequencies
 
-
 def calculate_power_bands(frequencies, psd):
     """Calculate absolute and relative power.
 
@@ -1063,7 +1048,6 @@ def calculate_power_bands(frequencies, psd):
         channel_powers[f"{band_name}_rel_power"] = np.nan_to_num(rel_power, nan=np.nan)
 
     return powers, channel_powers
-
 
 def calculate_mst_measures(connectivity_matrix, used_channels=None):
     """
@@ -1203,7 +1187,6 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
         logger.exception("Error in MST measures calculation")
         return None, None, False
 
-
 def calculate_pli(data):
     """Optimized PLI calculation using vectorization."""
     analytic_signal = hilbert(data, axis=0)
@@ -1222,11 +1205,9 @@ def calculate_pli(data):
 
     return pli
 
-
 def convert_to_integers(data):
     """Convert to integers using simple truncation."""
     return data.astype(int)
-
 
 def calculate_aecc(data, orthogonalize=False, force_positive=True):
     """
@@ -1293,7 +1274,6 @@ def calculate_aecc(data, orthogonalize=False, force_positive=True):
 
     return correlation_matrix
 
-
 def calculate_pe(data, n=4, st=1):
     """Calculate Permutation Entropy for each channel.
 
@@ -1337,7 +1317,6 @@ def calculate_pe(data, n=4, st=1):
 
     return np.array(PEs)
 
-
 def find_mirror_patterns(combinations):
     """Create a lookup dictionary for mirror patterns (assumes 0-based ranks)."""
     if not combinations:
@@ -1361,11 +1340,9 @@ def find_mirror_patterns(combinations):
                 mirrors[j] = i
     return mirrors
 
-
 def is_volume_conduction(pattern1, pattern2, mirrors):
     """Check for volume conduction."""
     return pattern1 == pattern2 or pattern2 == mirrors.get(pattern1, -1)
-
 
 def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
     """Calculate joint permutation entropy with corrected time delay handling.
@@ -1418,7 +1395,6 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
                     JPE[ch, ind] = 1 - jpe_norm if invert else jpe_norm
 
     return JPE + JPE.T
-
 
 def parse_epoch_filename(filename):
     """Parse epoch filename to extract components.
@@ -1838,15 +1814,12 @@ def process_subject_condition(args):
                             try:
                                 for aec_epoch_file_path in epoch_files:  # Renamed variable
                                     try:
-                                        # Assuming 'data' and 'epoch_data' are correctly defined if this path is taken.
-                                        # The provided snippet for AEC was slightly different.
-                                        # Based on the SV block, it would be:
-                                        data = pd.read_csv(aec_epoch_file_path, sep=None, engine="python") # Corrected based on context
+                                        data = pd.read_csv(aec_epoch_file_path, sep=None, engine="python")
                                         epoch_data = data.to_numpy()
                                         all_data.append(epoch_data)
                                         del data, epoch_data
                                     except Exception:
-                                        logger.exception(f"Error processing file {os.path.basename(aec_epoch_file_path)}") # Use renamed variable
+                                        logger.exception(f"Error processing file {os.path.basename(aec_epoch_file_path)}")
                                         continue
 
                                 if all_data:  # Check if we have any valid data
@@ -1923,7 +1896,6 @@ def process_subject_condition(args):
                                 logger.info("Added AEC channel data for concatenated processing")
 
                         else:
-                            # Original epoch-by-epoch processing (keep existing code)
                             aec_matrix = calculate_aecc(
                                 data_values, orthogonalize=use_aecc, force_positive=force_positive
                             )
@@ -2223,7 +2195,6 @@ def process_subject_condition(args):
 
         return subject, condition, error_result
 
-
 def process_batch(batch_args, n_threads):
     """Process a batch of subjects using multiprocessing with fallback."""
     try:
@@ -2236,7 +2207,6 @@ def process_batch(batch_args, n_threads):
         if "pool" in locals():
             pool.terminate()
             pool.join()
-
 
 def group_epochs_by_condition(folder_path, folder_ext):
     """Group epoch files by their base name and condition.
@@ -2319,8 +2289,7 @@ def group_epochs_by_condition(folder_path, folder_ext):
 
     return grouped_files
 
-
-def process_all_subjects(  # noqa: D103
+def process_all_subjects(
     grouped_files,
     convert_ints_pe,
     invert,
@@ -2584,7 +2553,7 @@ def save_results_to_excel(
             if calc_apen:
                 columns.append(f"{condition}_avg_apen")
 
-            # Power & Peak Frequency ---
+            # --- Power & Peak Frequency ---
             def is_broadband_condition(condition):
                 """Check if condition matches broadband pattern from FREQUENCY_BANDS."""
                 if "broadband" not in FREQUENCY_BANDS:
@@ -2594,13 +2563,13 @@ def save_results_to_excel(
 
             is_broadband_cond = is_broadband_condition(condition)
 
-            # Power band measures - only for broadband conditions
+            # --- Power band measures - only for broadband conditions ---
             if calc_power and is_broadband_cond:
                 for band_name in FREQUENCY_BANDS:
                     if band_name.lower() != "broadband":  # Skip broadband
                         columns.extend([f"{condition}_{band_name}_abs_power", f"{condition}_{band_name}_rel_power"])
 
-            # Peak frequency - can be calculated independently
+            # --- Peak frequency - can be calculated independently ---
             if calc_peak and is_broadband_cond:
                 columns.append(f"{condition}_peak_frequency")
                 columns.append(f"{condition}_channels_without_peak")
@@ -2936,10 +2905,7 @@ def main():
                     if jpe_st < 1:
                         msg = "Time step must be greater than 0"
                         raise ValueError(msg)
-                        # TODO: raising and immediately catching it seems redundant.
-                        # Does it have to happen like this for PySimpleGUI to work properly?
-                        # Simpler would be: `if condition: sg.popup_error("Message")`
-                        # check throughout; if changed then de-ignore TRY301 in ruff settings
+
                 except ValueError:
                     sg.popup_error("Invalid time step value")
                     continue

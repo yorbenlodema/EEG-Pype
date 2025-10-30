@@ -29,7 +29,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.3"
+EEG_version = "v4.3.1"
 
 # initial values
 progress_value1 = 20
@@ -88,7 +88,7 @@ layout = [
                     )
                 ],
                 [sg.Text("Yorben Lodema \nHerman van Dellen", font=("Default", 12), background_color="#E6F3FF")],
-                [sg.VPush(background_color="#E6F3FF")],  # Added background color
+                [sg.VPush(background_color="#E6F3FF")],
                 [
                     sg.Push(background_color="#E6F3FF"),
                 ],
@@ -171,7 +171,7 @@ def load_config_file():
     )
     if not isinstance(config_file, str):
         sg.popup_error("No file selected", "Ok")
-        exit()  # noqa: PLR1722 #TODO: Should this be sys.exit() instead?
+        exit()
     config = load_config(config_file)
     config["previous_run_config_file"] = config_file
     msg = "\nConfig " + config_file + " loaded for rerun\n"
@@ -489,7 +489,7 @@ def ask_ica_option(config):
             continue
         if event == "Yes":
             config["apply_ica"] = 1
-            config = ask_nr_ica_components(config, settings)  # ask nr components
+            config = ask_nr_ica_components(config, settings)
             break
         if event == "No":
             config["apply_ica"] = 0
@@ -565,7 +565,7 @@ def ask_epoch_selection(config):
             if event == "Yes":
                 config["apply_epoch_selection"] = 1
                 if config["rerun"] == 1:
-                    rerun_no_previous_epoch_selection = 1  # noqa: F841 #TODO: is this needed? can't it just be `pass`?
+                    rerun_no_previous_epoch_selection = 1
                 config = ask_epoch_length(config, settings)  # ask epoch length
                 break
             if event == "No":
@@ -704,7 +704,7 @@ def implement_channel_corrections(raw, config):
 
     # Apply the corrections
     for old_name, new_name in zip(raw.ch_names, corrected_names):
-        if old_name != new_name:  # Only rename if different
+        if old_name != new_name:
             raw.rename_channels({old_name: new_name})
 
     return raw, config
@@ -792,7 +792,7 @@ def show_channel_correction_window(raw, montage_name):
     # Create layout for the correction window
     layout = [
         [sg.Text("Channel Name Correction", font=("Default", 16, "bold"))],
-        # Search and replace
+
         [
             sg.Frame(
                 "Search and Replace",
@@ -974,7 +974,6 @@ def ask_nr_ica_components(config, settings):
         if event == "Ok":
             try:
                 config["nr_ica_components"] = int(values["-ICA_COMPONENTS-"])
-                # set to min (ica_components, max components(config['max_channels'])) @@@
                 break
             except:
                 sg.popup_error("No valid integer value", location=(100, 100), font=font)
@@ -1057,7 +1056,6 @@ def set_batch_related_names(config):
                     config["batch_prefix"] = prefix  # replace spaces
                     break
                 except:
-                    # not sure if except is needed
                     sg.popup_error("No value", location=(100, 100), font=font)
                     window.close()
             if event in (sg.WIN_CLOSED, "Ok"):
@@ -1091,7 +1089,7 @@ def set_file_output_related_names(config):
     root, ext = os.path.splitext(config["file_path"])
     config["file_output_subdirectory"] = posixpath.join(
         config["batch_output_subdirectory"], fn
-    )  # this is the sub-dir for output (epoch) files, remove spaces
+    )
     if not os.path.exists(config["file_output_subdirectory"]):
         os.makedirs(config["file_output_subdirectory"])
     file_name_sensor = os.path.basename(root) + "_Sensor_level"
@@ -1137,7 +1135,6 @@ def create_spatial_filter(raw_b):
         bem=bem,
     )
 
-    # Forward Solution
     fwd = mne.make_forward_solution(raw_b.info, trans=trans, src=src, bem=bem, eeg=True, mindist=0, n_jobs=None)
 
     # Inverse Problem
@@ -1146,6 +1143,7 @@ def create_spatial_filter(raw_b):
     # Create a new matrix noise_matrix (noise cov. matrix) with the same size as data_cov
     noise_matrix = np.zeros_like(data_cov["data"])
     diagonal_values = np.diag(data_cov["data"])
+    
     # Set the diagonal values of noise_matrix to the diagonal values of data_cov
     np.fill_diagonal(noise_matrix, diagonal_values)
     noise_cov = mne.Covariance(
@@ -1377,7 +1375,6 @@ def create_raw(config, montage, no_montage_files):
     ecg_map = {
         ch_name: "ecg"
         for ch_name in raw.ch_names
-        # Check name contains 'ecg' (case-insensitive) AND type isn't already 'ecg'
         if "ecg" in ch_name.lower() and raw.get_channel_types([ch_name])[0] != "ecg"
     }
     if ecg_map:
@@ -1397,7 +1394,7 @@ def update_channels_to_be_dropped(raw, config, file_name):
     Stores the list under `config[(file_name, "drop")]`.
     """
     channel_names = raw.ch_names
-    drop_list = select_channels_to_be_dropped(channel_names)  # ask user
+    drop_list = select_channels_to_be_dropped(channel_names)
     config[file_name, "drop"] = drop_list
     return raw, config
 
@@ -1449,7 +1446,7 @@ def perform_bad_channels_selection(raw, config):
     window["-RUN_INFO-"].update(msg + "\n", append=True)
     raw.plot(n_channels=len(raw.ch_names), block=True, title="Bandpass filtered data")
 
-    config[file_name, "bad"] = raw.info["bads"]  # *1 ### Aparte bad_channels variable is nu weg
+    config[file_name, "bad"] = raw.info["bads"]
     return raw, config
 
 def plot_power_spectrum(raw, filtered=False):
@@ -1861,8 +1858,8 @@ while True:  # @noloop remove
             lfl = len(config["input_file_paths"])
             filenum = 0
 
-            for file_path in config["input_file_paths"]:  # @noloop do not execute
-                config["file_path"] = file_path  # to be used by functions, this is the current file_path
+            for file_path in config["input_file_paths"]:
+                config["file_path"] = file_path
                 f = Path(file_path)
                 file_name = f.name
                 input_dir = str(f.parents[0])  # to prevent error print config json
@@ -1928,6 +1925,7 @@ while True:  # @noloop remove
 
                 if config["apply_epoch_selection"] and (config["rerun"] == 0 or rerun_no_previous_epoch_selection == 1):
                     config = perform_epoch_selection(raw_temp, config, temporary_sample_f)
+
 
                 # ********** Preparation of the final raw file and epochs for export **********
                 if config["apply_ica"] or config["apply_beamformer"]:
