@@ -29,7 +29,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.3.1"
+EEG_version = "v4.3.2"
 
 # initial values
 progress_value1 = 20
@@ -1139,7 +1139,9 @@ def create_spatial_filter(raw_b):
 
     # Inverse Problem
     data_cov = mne.compute_raw_covariance(raw_b)
-
+    
+    ranks = mne.compute_rank(raw_b, rank=None, tol='auto')
+    
     # Create a new matrix noise_matrix (noise cov. matrix) with the same size as data_cov
     noise_matrix = np.zeros_like(data_cov["data"])
     diagonal_values = np.diag(data_cov["data"])
@@ -1162,7 +1164,7 @@ def create_spatial_filter(raw_b):
         noise_cov=noise_cov,
         pick_ori="max-power",
         weight_norm="unit-noise-gain",
-        rank=None, 
+        rank=ranks, 
     )
 
 
@@ -1477,7 +1479,7 @@ def plot_power_spectrum(raw, filtered=False):
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.canvas.draw()
 
-def plot_clean_psd(raw_obj, filtered=False, epoch_duration=6.0, sd_threshold=2.0):
+def plot_clean_psd(raw_obj, filtered=False, epoch_duration=6.0, sd_threshold=1.5):
     """
     Creates temporary 6s epochs, rejects outliers based on 2 SDs of
     peak-to-peak amplitude, and then plots the PSD using Welch's method.
