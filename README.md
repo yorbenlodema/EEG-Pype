@@ -1,6 +1,6 @@
-## What is this software?
+## What is EEG-Pype?
 
-With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code.
+With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. Inspiration was taken from BrainWave as well (https://github.com/CornelisStam/BrainWave), especially for the quantitative analysis module. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code.
 
 The software is currently able to:
 - Open raw EEG files of type .txt, .bdf, .edf, .eeg and .fif.
@@ -19,12 +19,11 @@ The software is currently able to:
 - Log the chosen settings and performed analyses steps in a log file.
 - Correct channel names to match expected montage names through an interactive find/replace interface.
 
-
 The software is not (yet) able to:
 - Analyse task EEG data.
 - Open EEG files with data types not mentioned previously (you can put this in a new GitHub issue if you need to load another EEG filetype).
 
-In addition, we later added a quantitative analysis script, which allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing software. See below for more details.
+In addition, a separate quantitative analysis module allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing module. See below for more details.
 
 ### Tips for use and known issues
 When choosing the settings for the current analysis batch, most windows contain a "more info" button which will take you to an appropriate MNE documentation page.
@@ -41,7 +40,9 @@ When using Spyder IDE to run the program, initially Spyder can prompt the user t
 
 It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script.
 
-When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see whether the channel names match the MNE montage.
+If running the main preprocessing module (i.e, eeg_processing_script.py) from an IDE like Spyder does not work, there is also the option to run the script directly from the command line, in the same way as EEG-Pype's quantitative analysis module is run (see below in the **Quantitative analysis module** section for an explanation on how to do this).
+
+When loading EEG files, the software includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization), even though recognition of channel names is necessary for correct montage application. The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see whether the channel names match the MNE montage.
 
 When plotting the EEG channels side by side, note that ECG channels should be purple if recognized correctly:
 ![SCR-20250423-iyif](https://github.com/user-attachments/assets/b43621ec-3d84-44e4-a404-b1b499e9fe4d)
@@ -193,7 +194,7 @@ In the GUI, the number of threads should be specified. This number means that th
 2. **Phase Lag Time (PLT)** *Based on BrainWave software: https://github.com/CornelisStam/BrainWave*  
    - Concept: Unlike PLI, which looks at the distribution over the whole epoch, PLT measures the temporal stability of the phase relationship. It quantifies the average duration that one signal consistently leads or lags the other before the relationship flips.
    - Interpretation: A value close to 1.0 indicates a stable leading/lagging relationship throughout the epoch. A value close to 0.0 indicates frequent, unstable switching between leading and lagging.
-   - Custom Implementation: This version includes a noise threshold parameter. This acts as a refractory period to filter out rapid, high-frequency phase slips (noise), ensuring that only significant changes in the phase relationship affect the score.
+   - Custom Implementation: This version includes a noise threshold parameter. This acts as a refractory period to filter out rapid, high-frequency phase slips (noise), ensuring that only significant changes in the phase relationship affect the score used as PLT. This threshold can be changed in the GUI to increase or decrease PLT's sensitivity to fast phase transitions.
 
 3. **Amplitude Envelope Correlation (AEC)**
    - Measures correlation between amplitude envelopes of band-filtered signals
@@ -247,7 +248,7 @@ In the GUI, the number of threads should be specified. This number means that th
 - Additional measures: Diameter, kappa (degree divergence), mean edge weight.
 
 ### Spectral Analysis Methods
-The tool now supports multiple methods for spectral analysis:
+EEG-Pype supports multiple methods for spectral analysis:
 1. Multitaper Method (Default)
 - Provides optimal frequency resolution.
 - Best for detecting narrow-band signals.
