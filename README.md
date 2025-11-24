@@ -191,9 +191,9 @@ In the GUI, the number of threads should be specified. This number means that th
    - Range: 0 (no coupling or zero-lag coupling) to 1 (perfect non-zero lag synchronization).
      
 2. **Phase Lag Time (PLT)** *Based on BrainWave software: https://github.com/CornelisStam/BrainWave*  
-- Concept: Unlike PLI, which looks at the distribution over the whole epoch, PLT measures the temporal stability of the phase relationship. It quantifies the average duration that one signal consistently leads or lags the other before the relationship flips.
-- Interpretation: A value close to 1.0 indicates a stable leading/lagging relationship throughout the epoch. A value close to 0.0 indicates frequent, unstable switching between leading and lagging.
-- Custom Implementation: This version includes a noise threshold parameter. This acts as a refractory period to filter out rapid, high-frequency phase slips (noise), ensuring that only significant changes in the phase relationship affect the score.
+   - Concept: Unlike PLI, which looks at the distribution over the whole epoch, PLT measures the temporal stability of the phase relationship. It quantifies the average duration that one signal consistently leads or lags the other before the relationship flips.
+   - Interpretation: A value close to 1.0 indicates a stable leading/lagging relationship throughout the epoch. A value close to 0.0 indicates frequent, unstable switching between leading and lagging.
+   - Custom Implementation: This version includes a noise threshold parameter. This acts as a refractory period to filter out rapid, high-frequency phase slips (noise), ensuring that only significant changes in the phase relationship affect the score.
 
 3. **Amplitude Envelope Correlation (AEC)**
    - Measures correlation between amplitude envelopes of band-filtered signals
