@@ -11,7 +11,7 @@ The software is currently able to:
 - Apply an average reference.
 - Apply independent component analysis to remove artefacts. For this, you can change the number of components that are calculated (please read up on this before use).
 - Apply beamformer source reconstruction to the EEG (standard MNE LCMV beamformer with standard head model).
-- Down sample the file to a lower sample frequency by specifying a downsample factor (like a foctor of 4: from 2048 Hz to 512 Hz for example).
+- Down sample the file to a lower sample frequency by specifying a downsample factor (like a factor of 4: from 2048 Hz to 512 Hz for example).
 - Perform interactive visual epoch selection.
 - Perform filtering in different frequency bands and broadband output. These bands can be changed for the current batch in the GUI or more permanently in the settings file (see under tips and issues). The EEGs are filtered before cutting epochs, reducing edge artifacts.
 - Split alpha and beta bands into sub-bands (alpha1/alpha2 and beta1/beta2) for more detailed frequency analysis.
@@ -41,7 +41,7 @@ When using Spyder IDE to run the program, initially Spyder can prompt the user t
 
 It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script.
 
-When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see wether the channel names match the MNE montage.
+When loading EEG files, the software now includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization). The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see whether the channel names match the MNE montage.
 
 When plotting the EEG channels side by side, note that ECG channels should be purple if recognized correctly:
 ![SCR-20250423-iyif](https://github.com/user-attachments/assets/b43621ec-3d84-44e4-a404-b1b499e9fe4d)
@@ -50,7 +50,7 @@ If this is not the case, these channels might be included in operations like ave
 The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
 
 ## Short video overviews
-[![EEG-Pype Part 1](http://img.youtube.com/vi/NGzrvGhQj0g/0.jpg)](http://www.youtube.com/watch?v=NGzrvGhQj0g "EEG-Pype Part 1")
+[![EEG-Pype Part 1](https://img.youtube.com/vi/NGzrvGhQj0g/0.jpg)](http://www.youtube.com/watch?v=NGzrvGhQj0g "EEG-Pype Part 1")
 
 ## Installation
 
@@ -158,7 +158,18 @@ python -m pip install .
 
 ## Quantitative analysis module (separate script)
 ### Overview
-The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs. Different from the preprocessing software, this program is best run from the command line due to compatibility issues of the parallel processing implementation with IDEs like Spyder. To do this, simply change directory to the folder containing the Python script and use (similar to): ```python eeg_quantitative_analysis.py```. Then, the GUI should load automatically.
+The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs. Unlike the preprocessing software, this program is best run from the command line to avoid compatibility issues between parallel processing implementations and IDEs like Spyder.
+
+To run the tool, open your terminal (or Anaconda Prompt), activate the environment, navigate to the folder containing the script, and run it using Python:
+
+```bash
+conda activate EEG-Pype
+```
+After which your terminal line should say: *(EEG-Pype) →*
+```bash
+cd path/to/EEG-Pype
+python eeg_quantitative_analysis.py
+```
 
 Depending on your setup, it is probably advisable to not run too many EEGs in one go in the analysis script, since this can cause problems (probably memory-related) when saving the analysis output. Amounts of around 100-200 EEGs should work.
 
@@ -193,7 +204,7 @@ In the GUI, the number of threads should be specified. This number means that th
      - Force positive: Often used as negative correlations may not be physiologically meaningful.
 
 #### Complexity Measures
-1. **Joint Permutation Entropy (JPE/PE)** *(Scheijbeler et al., Network Neuroscience, 2022) and (Bandt and Pompe, Pysical Review Letters, 2002)*
+1. **Joint Permutation Entropy (JPE/PE)** *(Scheijbeler et al., Network Neuroscience, 2022) and (Bandt and Pompe, Physical Review Letters, 2002)*
    - Quantifies complexity through ordinal patterns in the signal.
    - Options:
      - Time step (tau): Determines temporal scale of patterns (should be adjusted based on sampling rate).
@@ -321,25 +332,3 @@ have a look at the [contribution guidelines](CONTRIBUTING.md).
 ## Credits
 
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [NLeSC/python-template](https://github.com/NLeSC/python-template).
-
-## Badges
-
-(Customize these badges with your own links, and check https://shields.io/ or https://badgen.net/ to see which other badges are available.)
-
-| fair-software.eu recommendations | |
-| :-- | :--  |
-| (1/5) code repository              | [![github repo badge](https://img.shields.io/badge/github-repo-000.svg?logo=github&labelColor=gray&color=blue)](https://github.com/snorben/eeg_preprocessing_umcu) |
-| (2/5) license                      | [![github license badge](https://img.shields.io/github/license/snorben/eeg_preprocessing_umcu)](https://github.com/snorben/eeg_preprocessing_umcu) |
-| (3/5) community registry           | [![RSD](https://img.shields.io/badge/rsd-eeg_preprocessing_umcu-00a3e3.svg)](https://www.research-software.nl/software/eeg_preprocessing_umcu) [![workflow pypi badge](https://img.shields.io/pypi/v/eeg_preprocessing_umcu.svg?colorB=blue)](https://pypi.python.org/project/eeg_preprocessing_umcu/) |
-| (4/5) citation                     | [![DOI](https://zenodo.org/badge/DOI/<replace-with-created-DOI>.svg)](https://doi.org/<replace-with-created-DOI>) |
-| (5/5) checklist                    | [![workflow cii badge](https://bestpractices.coreinfrastructure.org/projects/<replace-with-created-project-identifier>/badge)](https://bestpractices.coreinfrastructure.org/projects/<replace-with-created-project-identifier>) |
-| howfairis                          | [![fair-software badge](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu) |
-| **Other best practices**           | &nbsp; |
-| Static analysis                    | [![workflow scq badge](https://sonarcloud.io/api/project_badges/measure?project=snorben_eeg_preprocessing_umcu&metric=alert_status)](https://sonarcloud.io/dashboard?id=snorben_eeg_preprocessing_umcu) |
-| Coverage                           | [![workflow scc badge](https://sonarcloud.io/api/project_badges/measure?project=snorben_eeg_preprocessing_umcu&metric=coverage)](https://sonarcloud.io/dashboard?id=snorben_eeg_preprocessing_umcu) |
-| Documentation                      | [![Documentation Status](https://readthedocs.org/projects/eeg_preprocessing_umcu/badge/?version=latest)](https://eeg_preprocessing_umcu.readthedocs.io/en/latest/?badge=latest) |
-| **GitHub Actions**                 | &nbsp; |
-| Build                              | [![build](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/build.yml/badge.svg)](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/build.yml) |
-| Citation data consistency          | [![cffconvert](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/cffconvert.yml/badge.svg)](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/cffconvert.yml) |
-| SonarCloud                         | [![sonarcloud](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/sonarcloud.yml) |
-| MarkDown link checker              | [![markdown-link-check](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/markdown-link-check.yml/badge.svg)](https://github.com/snorben/eeg_preprocessing_umcu/actions/workflows/markdown-link-check.yml) |
