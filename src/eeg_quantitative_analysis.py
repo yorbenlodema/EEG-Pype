@@ -25,7 +25,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyiauWyJB1gdyGQlPvXbgi7IAswIIk3xnpjYF2QVPuccn2aVNJdRhCnI96RMUTtcdzOMYzIM05eNLjWQjyxMQi8wGirTkGxl2jUZcWc5YzYZOUyRXllcQGExvvFeDWz1jlVbVnEROW3ZzXIJGzUalWp9huwImjmojivNhSr4Ew9ItiOwHikTXmpFxthZIUrZ8pfcCnFNQ0iIJjyokihWeWm95yfYymHVJu2I4iqwxi5T9mAFatLZaUkxphHcv3DQRi3OcipJZMBbN2ZR6lvbeWEEkiuL7CfJSDIbt2n1mwBY8WY555qIsj8oriYISiJwNiwQq3GVvzEdaGL9VtyZMXbJgJIRnCrI06II1jCQNxDNSj8YEyPICiNwyiaR1GVFw0VZOUeltz1cW3EVFlUZcC3IG6nIUj3ICwjM3jQQ6tWMUT5IAtLMADTUdi8L1ClJQERYEXfRelmR0XBhDwTa5XyJalIcXyoIX6aIvj3ICwSM3jcYrtcMYT2AFtgMMDTkNiNL4CtJKFIbDWmFQpNbUEFFckFZeHrJVlRcY3DM9isOmicJ258bD3qJjiKZVWp5Psab62lRPllb7WbFQAbcOHtJsv6dUGm9EueLXmv1ylIIliowFiAShVhBZBwZuGnRVyXZrXMNdzTI9j7osioM5T8QxztLBjCEoyPMvSI4XySMRzxk3umMeT5MeisfZQJ=c=02504c6fb7ca09721d288ae69f8237c96a99697e5b723e543938c4be810e2615f6fa037769c1edbd61ae40a244556b95fdfc2843df8e3807e955bc2c1d4be04c7022e2aa84c8eef696a9c6a61297e79cc4f465fb5e94513820c17814b2d35afadfa00653a9157afbad05ce088b890ca447c12c1df95d67e61ceed0b57d99ee7f26bfca445ad111393dab2dd1b6bee992510a1e973d0c6fae38f654816cc8de05ce7a79081d2029d636be38fb06ff7c68bfa0bdf080c7bb349a71ec74894e9f746bcbe58a67482485609109ec0a416582fc50f3500f55d5a021e7ea0ce4aafa6a207c77b80c2b48484e70314ef2b1a14970f110336f4c68eed12b49b4f3560b9e48eca892473d97b6ccb712cd086b0baa6aef3aa59be23f951a3476fbc5824402af301b988f410cf050f722fa3f2995ae68d4852645384eccec7841c10fe44b08102cc32a6d94a5854d0a148cecf8d25a51067db2e71842845dd715141ca15f1a5dd475bf4cba5afb23e794e77a53b89590ea0a37e638d46c73c869f4957c4a445d813a94167f3aaca7b58ce66ccb0c605e4820cc661c3d2ae832e41ee9fd46357fb40d26e103d4d747794f8548c27c363e096d495269740a6c08e5f936aec6c689a5a18694b24c37268c9c18760d063ad62b96d505b01074f81d7bb94d456c0d2bca0dd8b96b2246167bb1d0ce36a44a4ec051d22a72260ebbf910b375e511158"  # noqa: E501
 import PySimpleGUI as sg
 
-EEG_version = "v4.3.2"
+EEG_version = "v4.4.0"
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +330,11 @@ def create_gui():
                             "Calculate PLI MST measures", key="-CALC_PLI_MST-", default=False, background_color=MAIN_BG
                         )
                     ],
+                    [sg.Checkbox("Calculate PLT", key="-CALC_PLT-", default=False, background_color=MAIN_BG)],
+                    [
+                         sg.Text("PLT Noise Threshold (ms):", background_color=MAIN_BG),
+                         sg.Input("30", key="-PLT_THRESH-", size=(4, 1)),
+                    ],
                     [sg.Checkbox("Calculate AEC", key="-CALC_AEC-", default=False, background_color=MAIN_BG)],
                     [
                         sg.Checkbox(
@@ -443,6 +448,7 @@ def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_n
     folders = {
         "jpe": os.path.join(base_folder, matrix_folder_name, "jpe"),
         "pli": os.path.join(base_folder, matrix_folder_name, "pli"),
+        "plt": os.path.join(base_folder, matrix_folder_name, "plt"),
         "aec": os.path.join(base_folder, matrix_folder_name, "aec"),
     }
 
@@ -510,7 +516,7 @@ def save_connectivity_matrix(matrix, folder_path, subject, freq_band, feature, c
     df.index = channel_names
     df.columns = channel_names
 
-    df.to_csv(filepath)
+    df.to_csv(filepath, float_format='%.5f')
     return filepath
 
 def linear_detrend(data):
@@ -1205,6 +1211,63 @@ def calculate_pli(data):
 
     return pli
 
+def PLT(data, fs, threshold_ms=30):
+    """
+    Calculates the Phase Lag Time (PLT) index.
+    Expects data in (samples, channels) or (channels, samples).
+    """
+    # 1. Data Standardisation
+    if hasattr(data, 'values'):  # Check if pandas DataFrame
+        data = data.values
+    
+    # Ensure shape is (channels x samples) for Hilbert
+    if data.shape[0] > data.shape[1]:
+        data = data.T
+        
+    n_channels = data.shape[0]
+    n_samples = data.shape[1]
+    
+    # 2. Calculate Threshold in Samples
+    min_samples = int((threshold_ms / 1000) * fs)
+    
+    # 3. Analytic Signal
+    analytic = hilbert(data, axis=1)
+    PLT_matrix = np.zeros((n_channels, n_channels))
+    total_time_seconds = n_samples / fs
+
+    for i in range(n_channels):
+        for j in range(i + 1, n_channels): 
+            
+            # Phase Difference & Sign Logic
+            phase_diff_complex = analytic[i] / analytic[j]
+            sign_diff = np.sign(phase_diff_complex.imag)
+            sign_diff[sign_diff == 0] = 1 
+
+            # Detect Crossings
+            crossings = np.where(np.abs(np.diff(sign_diff)) > 1)[0]
+            
+            # 4. Apply Time-Based Threshold
+            if crossings.size > 1 and min_samples > 0:
+                valid_crossings = [crossings[0]]
+                for k in range(1, len(crossings)):
+                    if crossings[k] - valid_crossings[-1] > min_samples:
+                        valid_crossings.append(crossings[k])
+                crossings = np.array(valid_crossings)
+
+            num_crossings = crossings.size
+
+            # 5. Calculate Score
+            if num_crossings == 0:
+                PLT_matrix[i, j] = 1.0
+            else:
+                avg_t = total_time_seconds / (num_crossings + 1)
+                PLT_matrix[i, j] = 1 - np.exp(-avg_t)
+
+    # Mirror matrix
+    PLT_matrix = PLT_matrix + PLT_matrix.T
+    
+    return PLT_matrix
+
 def convert_to_integers(data):
     """Convert to integers using simple truncation."""
     return data.astype(int)
@@ -1466,6 +1529,8 @@ def process_subject_condition(args):
         psd_method,
         welch_window_ms,
         welch_overlap,
+        calc_plt,
+        plt_threshold_ms,
     ) = args
 
     try:
@@ -1473,6 +1538,7 @@ def process_subject_condition(args):
         jpe_values = []
         pe_values = []
         pli_values = []
+        plt_values = []
         aec_values = []
         pli_mst_values = defaultdict(list)
         aec_mst_values = defaultdict(list)
@@ -1490,6 +1556,7 @@ def process_subject_condition(args):
         avg_matrices = {
             "jpe": None,
             "pli": None,
+            "plt": None,
             "aec": None,
         }
 
@@ -1755,7 +1822,7 @@ def process_subject_condition(args):
                     if "data_values_pe" in locals():
                         del data_values_pe
 
-                # Calculate PLI if requested
+                # Calculate PLI ad PLT nif requested
                 if calc_pli:
                     try:
                         pli_matrix = calculate_pli(data_values)
@@ -1800,6 +1867,27 @@ def process_subject_condition(args):
                     except Exception:
                         logger.exception("Error calculating PLI")
                         pli_values.append(np.nan)
+                        
+                if calc_plt:
+                    try:
+                        plt_matrix = PLT(data_values, fs=power_fs, threshold_ms=plt_threshold_ms)
+                        
+                        if save_matrices:
+                            if avg_matrices["plt"] is None:
+                                avg_matrices["plt"] = plt_matrix
+                            else:
+                                avg_matrices["plt"] += plt_matrix
+                        
+                        mask = ~np.eye(plt_matrix.shape[0], dtype=bool)
+                        plt_values.append(plt_matrix[mask].mean())
+                        
+                        if save_channel_averages:
+                            channel_plt = np.mean(plt_matrix, axis=1)
+                            for ch in range(len(channel_names)):
+                                channel_results[channel_names[ch]]["plt"].append(channel_plt[ch])
+                    except Exception:
+                        logger.exception(f"Error calculating PLT for epoch {i+1}")
+                        plt_values.append(np.nan)
 
                 # Calculate AEC/AECc if requested
                 if calc_aec:
@@ -2031,6 +2119,7 @@ def process_subject_condition(args):
             "avg_jpe": np.mean(jpe_values) if jpe_values and calc_jpe else np.nan,
             "avg_pe": np.mean(pe_values) if pe_values and calc_jpe else np.nan,
             "avg_pli": np.mean(pli_values) if pli_values and calc_pli else np.nan,
+            "avg_plt": np.mean(plt_values) if plt_values and calc_plt else np.nan, # <--- NEW
             "avg_aec": np.mean(aec_values) if aec_values and calc_aec else np.nan,
             "avg_sampen": np.mean(sampen_values) if sampen_values and calc_sampen else np.nan,
             "avg_apen": np.mean(apen_values) if apen_values and calc_apen else np.nan,
@@ -2132,6 +2221,7 @@ def process_subject_condition(args):
             "avg_jpe": np.nan,
             "avg_pe": np.nan,
             "avg_pli": np.nan,
+            "avg_plt": np.nan,
             "avg_aec": np.nan,
             "avg_apen": np.nan,
             "avg_sampen": np.nan,
@@ -2322,6 +2412,8 @@ def process_all_subjects(
     psd_method="multitaper",
     welch_window_ms=1000,
     welch_overlap=50,
+    calc_plt=False,
+    plt_threshold_ms=30,
     progress_callback=None,
 ):
     process_args = []
@@ -2362,6 +2454,8 @@ def process_all_subjects(
                     psd_method,
                     welch_window_ms,
                     welch_overlap,
+                    calc_plt,
+                    plt_threshold_ms,
                 )
             )
 
@@ -2451,6 +2545,7 @@ def save_results_to_excel(
     calc_pli_mst,
     calc_jpe=True,
     calc_pli=True,
+    calc_plt=False,
     calc_aec=False,
     use_aecc=False,
     force_positive=True,
@@ -2470,6 +2565,7 @@ def save_results_to_excel(
     psd_method="multitaper",
     welch_window_ms=None,
     welch_overlap=None,
+    plt_threshold_ms=None,
 ):
     """
     Save results to Excel with organized columns by condition.
@@ -2522,6 +2618,10 @@ def save_results_to_excel(
                 # Possibly also track valid-epoch counters
                 columns.append(f"{condition}_pli_mst_successful_epochs")
                 columns.append(f"{condition}_pli_mst_total_epochs")
+                
+            # --- PLT ---
+            if calc_plt:
+                columns.append(f"{condition}_avg_plt")
 
             # --- AEC ---
             if calc_aec:
@@ -2601,6 +2701,10 @@ def save_results_to_excel(
                 # PLI
                 if calc_pli:
                     row[f"{condition}_avg_pli"] = data_for_condition.get("avg_pli", np.nan)
+                
+                # PLT
+                if calc_plt:
+                    row[f"{condition}_avg_plt"] = data_for_condition.get("avg_plt", np.nan)
 
                 # PLI MST
                 if calc_pli_mst:
@@ -2703,6 +2807,8 @@ def save_results_to_excel(
                 "AEC Type",
                 "AEC Concatenated Epochs",
                 "AEC MST Calculated",
+                "PLT Calculated",
+                "PLT Threshold (ms)",
                 "AEC Force Positive",
                 "Power Bands Calculated",
                 "Sampling Frequency (Hz)",
@@ -2725,12 +2831,14 @@ def save_results_to_excel(
                 "AECc (orthogonalized)" if calc_aec and use_aecc else "AEC" if calc_aec else "Not calculated",
                 "Yes" if concat_aecc else "No",
                 "Yes" if calc_aec_mst else "No",
+                "Yes" if calc_plt else "No",
+                str(plt_threshold_ms) if calc_plt else "N/A",
                 "Yes" if force_positive else "No",
                 "Yes" if calc_power else "No",
                 str(power_fs),
-                psd_method,  # New
-                str(welch_window_ms) if psd_method == "welch" else "N/A",  # New
-                str(welch_overlap) if psd_method == "welch" else "N/A",  # New
+                psd_method,
+                str(welch_window_ms) if psd_method == "welch" else "N/A",
+                str(welch_overlap) if psd_method == "welch" else "N/A",
                 "Yes" if calc_peak else "No",
                 f"{(calc_peak and f'{peak_min}-{peak_max}') or 'N/A'}",
                 "Yes" if calc_sampen else "No",
@@ -2815,6 +2923,342 @@ def save_results_to_excel(
     logger.info(f"Results saved to: {output_path}")
     print(f"\nResults saved to {output_path}")
 
+
+# def main():
+#     """Run the GUI and process EEG data analysis."""
+#     window = create_gui()
+
+#     while True:
+#         event, values = window.read()
+
+#         if event in (sg.WIN_CLOSED, "Exit"):
+#             break
+
+#         if event == "-PSD_METHOD-":  # When PSD method changes
+#             window.refresh()
+
+#         if event == "Process":
+#             folder_path = values["-FOLDER-"]
+#             folder_ext = values["-EXTENSION-"].strip()
+
+#             # Get PSD method parameters
+#             psd_method = values["-PSD_METHOD-"].lower()  # Convert to lowercase
+#             welch_window_ms = None
+#             welch_overlap = None
+
+#             if psd_method == "welch":
+#                 try:
+#                     welch_window_ms = float(values["-WELCH_WINDOW-"])
+#                     welch_overlap = float(values["-WELCH_OVERLAP-"])
+#                     if welch_window_ms <= 0:
+#                         msg = "Welch window length must be greater than 0"
+#                         raise ValueError(msg)
+#                     if not 0 <= welch_overlap <= 100:  # noqa: PLR2004
+#                         msg = "Welch overlap must be between 0 and 100"
+#                         raise ValueError(msg)
+#                 except ValueError:
+#                     sg.popup_error("Invalid Welch parameters")
+#                     continue
+
+#             # Setup logging first thing
+#             log_file = setup_logging(folder_path)
+#             logger.info("=== Starting new analysis run ===")
+#             logger.info(f"Folder path: {folder_path}")
+#             logger.info(f"Extension: {folder_ext}")
+#             logger.info(f"Processing files with{'out' if not values['-HAS_HEADERS-'] else ''} headers")
+#             if not values["-HAS_HEADERS-"]:
+#                 logger.info("Channel names will be auto-generated")
+
+#             try:
+#                 n_threads = int(values["-THREADS-"])
+#                 if n_threads < 1 or n_threads > cpu_count():
+#                     msg = f"Number of threads must be between 1 and {cpu_count()}"
+#                     raise ValueError(msg)
+#             except ValueError:
+#                 sg.popup_error("Invalid number of threads")
+#                 continue
+
+#             if not folder_path or not folder_ext:
+#                 sg.popup_error("Please select a folder and specify folder extension")
+#                 continue
+
+#             try:
+#                 validate_frequency_bands()
+#             except ValueError:
+#                 sg.popup_error("Invalid frequency band configuration")
+#                 sys.exit(1)
+
+#             # Get matrix saving options
+#             save_matrices = values["-SAVE_MATRICES-"]
+#             matrix_folder = values["-MATRIX_FOLDER-"]
+#             save_mst = values["-SAVE_MST-"]
+#             mst_folder = values["-MST_FOLDER-"]
+
+#             if save_matrices and not matrix_folder.strip():
+#                 sg.popup_error("Please specify a folder name for saving matrices")
+#                 continue
+
+#             if save_mst and not mst_folder.strip():
+#                 sg.popup_error("Please specify a folder name for saving MST matrices")
+#                 continue
+
+#             grouped_files = group_epochs_by_condition(folder_path, folder_ext)
+#             if not grouped_files:
+#                 continue
+
+#             try:
+#                 # Validate JPE time step
+#                 try:
+#                     jpe_st = int(values["-JPE_ST-"])
+#                     if jpe_st < 1:
+#                         msg = "Time step must be greater than 0"
+#                         raise ValueError(msg)
+
+#                 except ValueError:
+#                     sg.popup_error("Invalid time step value")
+#                     continue
+
+#                 # Validate power sampling frequency
+#                 try:
+#                     power_fs = float(values["-POWER_FS-"])
+#                     if power_fs <= 0:
+#                         msg = "Sampling frequency must be greater than 0"
+#                         raise ValueError(msg)
+#                 except ValueError:
+#                     sg.popup_error("Invalid sampling frequency value")
+#                     continue
+
+#                 # Validate peak frequency range
+#                 peak_min = peak_max = None
+#                 if values["-CALC_PEAK-"]:
+#                     try:
+#                         peak_min = float(values["-PEAK_MIN-"])
+#                         peak_max = float(values["-PEAK_MAX-"])
+#                         if peak_min >= peak_max:
+#                             msg = "Minimum frequency must be less than maximum"
+#                             raise ValueError(msg)
+#                         if peak_min < 0 or peak_max > (power_fs / 2):
+#                             msg = f"Frequency range must be between 0 and {power_fs / 2} Hz"
+#                             raise ValueError(msg)
+#                     except ValueError:
+#                         sg.popup_error("Invalid peak frequency range")
+#                         continue
+
+#                 # Validate SampEn parameters
+#                 sampen_m = None
+#                 if values["-CALC_SAMPEN-"]:
+#                     try:
+#                         sampen_m = int(values["-SAMPEN_M-"])
+#                         if sampen_m < 1:
+#                             msg = "Order m must be greater than 0"
+#                             raise ValueError(msg)
+#                     except ValueError:
+#                         sg.popup_error("Invalid SampEn order parameter")
+#                         continue
+
+#                 # Validate ApEn parameters
+#                 apen_m = apen_r = None
+
+#                 if values["-CALC_APEN-"]:
+#                     try:
+#                         apen_m = int(values["-APEN_M-"])
+#                         if apen_m <= 0:
+#                             msg = "Order m must be greater than 0"
+#                             raise ValueError(msg)
+
+#                         apen_r = float(values["-APEN_R-"])
+#                         if apen_r <= 0:
+#                             msg = "Tolerance r must be greater than 0"
+#                             raise ValueError(msg)
+#                     except ValueError:
+#                         sg.popup_error("Invalid ApEn parameter")
+#                         continue
+
+#                 # Validate spectral variability window
+#                 sv_window = None
+#                 if values["-CALC_SV-"]:
+#                     try:
+#                         sv_window = int(values["-SV_WINDOW-"])
+#                         if sv_window < MIN_WINDOW_SIZE:
+#                             msg = f"Window length must be at least {MIN_WINDOW_SIZE} ms"
+#                             raise ValueError(msg)
+#                     except ValueError:
+#                         sg.popup_error("Invalid spectral variability window")
+#                         continue
+
+#                 def update_progress(value):
+#                     window["-PROGRESS-"].update(value)
+#                     window.refresh()
+
+#                 results = process_all_subjects(
+#                     grouped_files,
+#                     convert_ints_pe=values["-CONVERT_INTS_PE-"],
+#                     invert=values["-INVERT-"],
+#                     n_threads=n_threads,
+#                     calc_jpe=values["-CALC_JPE-"],
+#                     calc_pli=values["-CALC_PLI-"],
+#                     calc_pli_mst=values["-CALC_PLI_MST-"],
+#                     calc_aec=values["-CALC_AEC-"],
+#                     use_aecc=values["-USE_AECC-"],
+#                     force_positive=values["-AEC_FORCE_POSITIVE-"],
+#                     concat_aecc=values["-CONCAT_AECC-"],
+#                     has_headers=values["-HAS_HEADERS-"],
+#                     jpe_st=jpe_st,
+#                     calc_aec_mst=values["-CALC_AEC_MST-"],
+#                     calc_power=values["-CALC_POWER-"],
+#                     power_fs=power_fs,
+#                     calc_peak=values["-CALC_PEAK-"],
+#                     peak_min=peak_min,
+#                     peak_max=peak_max,
+#                     calc_sampen=values["-CALC_SAMPEN-"],
+#                     sampen_m=sampen_m,
+#                     calc_apen=values["-CALC_APEN-"],
+#                     apen_m=apen_m,
+#                     apen_r=apen_r,
+#                     calc_sv=values["-CALC_SV-"],
+#                     sv_window=sv_window,
+#                     save_matrices=save_matrices,
+#                     save_mst=save_mst,
+#                     save_channel_averages=values["-SAVE_CHANNEL_AVERAGES-"],
+#                     psd_method=psd_method,
+#                     welch_window_ms=welch_window_ms if psd_method == "welch" else None,
+#                     welch_overlap=welch_overlap if psd_method == "welch" else None,
+#                     progress_callback=update_progress,
+#                 )
+
+#                 if results:
+#                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+#                     output_path = os.path.join(folder_path, f"EEG_analysis_{timestamp}.xlsx")
+
+#                     try:
+#                         save_results_to_excel(
+#                             results,
+#                             output_path,
+#                             values["-INVERT-"],
+#                             values["-CALC_PLI_MST-"],
+#                             calc_jpe=values["-CALC_JPE-"],
+#                             calc_pli=values["-CALC_PLI-"],
+#                             calc_aec=values["-CALC_AEC-"],
+#                             use_aecc=values["-USE_AECC-"],
+#                             force_positive=values["-AEC_FORCE_POSITIVE-"],
+#                             calc_aec_mst=values["-CALC_AEC_MST-"],
+#                             calc_power=values["-CALC_POWER-"],
+#                             power_fs=power_fs,
+#                             calc_peak=values["-CALC_PEAK-"],
+#                             peak_min=peak_min,
+#                             peak_max=peak_max,
+#                             calc_sampen=values["-CALC_SAMPEN-"],
+#                             calc_apen=values["-CALC_APEN-"],
+#                             calc_sv=values["-CALC_SV-"],
+#                             sv_window=sv_window if values["-CALC_SV-"] else None,
+#                             save_channel_averages=values["-SAVE_CHANNEL_AVERAGES-"],
+#                             concat_aecc=values["-CONCAT_AECC-"],
+#                             has_headers=values["-HAS_HEADERS-"],
+#                             psd_method=psd_method,  # New
+#                             welch_window_ms=welch_window_ms if psd_method == "welch" else None,  # New
+#                             welch_overlap=welch_overlap if psd_method == "welch" else None,  # New
+#                         )
+#                         # Save matrices if requested
+#                         matrices_saved = 0
+#                         mst_matrices_saved = 0
+
+#                         logger.info("Starting matrix saving process...")
+
+#                         if save_matrices or save_mst:
+#                             folders = create_matrix_folder_structure(
+#                                 folder_path, matrix_folder, mst_folder if save_mst else None
+#                             )
+
+#                             for subject, conditions in results.items():
+#                                 for condition, result in conditions.items():
+#                                     if result.get("matrices"):
+#                                         freq_band = extract_freq_band(condition)
+#                                         matrices = result["matrices"]
+#                                         current_channel_names = result["channel_names"]
+
+#                                         # Extract level type from condition
+#                                         level_type = "source" if "source" in condition.lower() else "sensor"
+
+#                                         # Save regular connectivity matrices
+#                                         if save_matrices:
+#                                             for feature, matrix in matrices.items():
+#                                                 if matrix is not None and feature in ["jpe", "pli", "aec"]:
+#                                                     try:
+#                                                         if len(matrix) == len(current_channel_names):
+#                                                             filepath = save_connectivity_matrix(
+#                                                                 matrix,
+#                                                                 folders[feature],
+#                                                                 subject,
+#                                                                 freq_band,
+#                                                                 feature,
+#                                                                 current_channel_names,
+#                                                                 level_type,
+#                                                             )
+#                                                             matrices_saved += 1
+#                                                             logger.info(f"Saved {feature} matrix to: {filepath}")
+#                                                         else:
+#                                                             logger.exception(
+#                                                                 f"Matrix dimension ({len(matrix)}) doesn't match channel count ({len(current_channel_names)})"  # noqa: E501
+#                                                             )
+#                                                     except Exception:
+#                                                         logger.exception(f"Error saving {feature} matrix")
+
+#                                         # Save MST matrices
+#                                         if save_mst:
+#                                             for mst_type, matrix_key in [
+#                                                 ("pli_mst", "pli_mst"),
+#                                                 ("aec_mst", "aec_mst"),
+#                                             ]:
+#                                                 if matrix_key in matrices and matrices[matrix_key] is not None:
+#                                                     try:
+#                                                         if len(matrices[matrix_key]) == len(current_channel_names):
+#                                                             filepath = save_connectivity_matrix(
+#                                                                 matrices[matrix_key],
+#                                                                 folders[mst_type],
+#                                                                 subject,
+#                                                                 freq_band,
+#                                                                 matrix_key,
+#                                                                 current_channel_names,
+#                                                                 level_type,
+#                                                             )
+#                                                             mst_matrices_saved += 1
+#                                                             logger.info(f"Saved {matrix_key} matrix to: {filepath}")
+#                                                         else:
+#                                                             logger.exception(
+#                                                                 f"MST matrix dimension ({len(matrices[matrix_key])}) doesn't match channel count ({len(current_channel_names)})"  # noqa: E501
+#                                                             )
+#                                                     except Exception:
+#                                                         logger.exception(f"Error saving {matrix_key} matrix")
+
+#                         if matrices_saved > 0:
+#                             logger.info(f"Saved {matrices_saved} connectivity matrices")
+#                         if mst_matrices_saved > 0:
+#                             logger.info(f"Saved {mst_matrices_saved} MST matrices")
+
+#                         logger.info(f"Results saved to: {output_path}")
+#                         success_message = f"Analysis complete!\nResults saved to:\n{output_path}"
+#                         if save_matrices:
+#                             success_message += f"\nConnectivity matrices saved in: {matrix_folder}"
+#                         if save_mst:
+#                             success_message += f"\nMST matrices saved in: {mst_folder}"
+#                         success_message += f"\nLog file: {log_file}"
+#                         sg.popup(success_message)
+
+#                     except Exception:
+#                         logger.exception("Error saving results")
+#                         sg.popup_error("Error saving results")
+#                 else:
+#                     logger.warning("No results were generated")
+#                     sg.popup_error("No results were generated")
+
+#             except Exception:
+#                 logger.exception("Error during processing")
+#                 sg.popup_error("Error during processing")
+
+#             finally:
+#                 logger.info("Analysis run completed")
+
+#     window.close()
 
 def main():
     """Run the GUI and process EEG data analysis."""
@@ -2909,6 +3353,19 @@ def main():
                 except ValueError:
                     sg.popup_error("Invalid time step value")
                     continue
+
+                # Validate PLT parameters
+                calc_plt = values.get("-CALC_PLT-", False)
+                plt_threshold_ms = 30
+                if calc_plt:
+                    try:
+                        plt_threshold_ms = float(values["-PLT_THRESH-"])
+                        if plt_threshold_ms < 0:
+                            msg = "PLT Threshold must be positive"
+                            raise ValueError(msg)
+                    except ValueError:
+                        sg.popup_error("Invalid PLT Threshold value")
+                        continue
 
                 # Validate power sampling frequency
                 try:
@@ -3015,6 +3472,8 @@ def main():
                     psd_method=psd_method,
                     welch_window_ms=welch_window_ms if psd_method == "welch" else None,
                     welch_overlap=welch_overlap if psd_method == "welch" else None,
+                    calc_plt=calc_plt,
+                    plt_threshold_ms=plt_threshold_ms,
                     progress_callback=update_progress,
                 )
 
@@ -3046,9 +3505,11 @@ def main():
                             save_channel_averages=values["-SAVE_CHANNEL_AVERAGES-"],
                             concat_aecc=values["-CONCAT_AECC-"],
                             has_headers=values["-HAS_HEADERS-"],
-                            psd_method=psd_method,  # New
-                            welch_window_ms=welch_window_ms if psd_method == "welch" else None,  # New
-                            welch_overlap=welch_overlap if psd_method == "welch" else None,  # New
+                            psd_method=psd_method,
+                            welch_window_ms=welch_window_ms if psd_method == "welch" else None,
+                            welch_overlap=welch_overlap if psd_method == "welch" else None,
+                            calc_plt=calc_plt,
+                            plt_threshold_ms=plt_threshold_ms, # <--- PASSING THE NEW PARAMETER
                         )
                         # Save matrices if requested
                         matrices_saved = 0
@@ -3071,10 +3532,10 @@ def main():
                                         # Extract level type from condition
                                         level_type = "source" if "source" in condition.lower() else "sensor"
 
-                                        # Save regular connectivity matrices
+                                        # Save regular connectivity matrices (Added "plt" here)
                                         if save_matrices:
                                             for feature, matrix in matrices.items():
-                                                if matrix is not None and feature in ["jpe", "pli", "aec"]:
+                                                if matrix is not None and feature in ["jpe", "pli", "aec", "plt"]:
                                                     try:
                                                         if len(matrix) == len(current_channel_names):
                                                             filepath = save_connectivity_matrix(
@@ -3151,7 +3612,6 @@ def main():
                 logger.info("Analysis run completed")
 
     window.close()
-
 
 if __name__ == "__main__":
     main()
