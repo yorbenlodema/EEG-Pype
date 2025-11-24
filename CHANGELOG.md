@@ -12,3 +12,6 @@ Solved a bug: "mean of empty slice" which was caused by NaNs in the power calcul
 
 ## Version 4.3.2:
 Added explicit data rank to spatial filter function to remove problem of data rank deficiency when discarding more than 1 ICA component in combination with LCMV beamforming.
+
+## Version 4.4.0:
+Added calculation of Phase Lag Time (PLT) to the quantitative analysis script, similar to the calculation in BrainWave (by C.J. Stam). 
