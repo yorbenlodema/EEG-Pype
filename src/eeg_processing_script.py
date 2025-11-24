@@ -29,7 +29,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.3.2"
+EEG_version = "v4.4.0"
 
 # initial values
 progress_value1 = 20
