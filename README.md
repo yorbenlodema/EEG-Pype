@@ -156,7 +156,7 @@ conda activate EEG-Pype
 python -m pip install .
 ```
 
-## Quantitative analysis script (separate script)
+## Quantitative analysis module (separate script)
 ### Overview
 The EEG Quantitative Analysis Tool is a GUI-based application for calculating various quantitative features from preprocessed EEG epochs. Different from the preprocessing software, this program is best run from the command line due to compatibility issues of the parallel processing implementation with IDEs like Spyder. To do this, simply change directory to the folder containing the Python script and use (similar to): ```python eeg_quantitative_analysis.py```. Then, the GUI should load automatically.
 
@@ -173,13 +173,18 @@ In the GUI, the number of threads should be specified. This number means that th
   - Without headers: Channel names will be auto-generated as "Channel_1", "Channel_2", etc.
 
 ### Features
-#### Connectivity Measures
+#### Connectivity Measures  
 1. **Phase Lag Index (PLI)** *(Stam et al., Human Brain Mapping, 2007)*
-   - Measures consistency of phase relationships between signals while being less sensitive to volume conduction.
-   - Values range from 0 (no phase coupling) to 1 (perfect phase coupling).
-   - Zero-lag connections are discarded to reduce volume conduction effects.
+   - Measures the asymmetry of the distribution of phase differences between two signals.
+   - Key Benefit: It ignores zero-lag synchronization (common in volume conduction) by exclusively quantifying non-zero phase lag.
+   - Range: 0 (no coupling or zero-lag coupling) to 1 (perfect non-zero lag synchronization).
+     
+2. **Phase Lag Time (PLT)** *Based on BrainWave software: https://github.com/CornelisStam/BrainWave*  
+- Concept: Unlike PLI, which looks at the distribution over the whole epoch, PLT measures the temporal stability of the phase relationship. It quantifies the average duration that one signal consistently leads or lags the other before the relationship flips.
+- Interpretation: A value close to 1.0 indicates a stable leading/lagging relationship throughout the epoch. A value close to 0.0 indicates frequent, unstable switching between leading and lagging.
+- Custom Implementation: This version includes a noise threshold parameter. This acts as a refractory period to filter out rapid, high-frequency phase slips (noise), ensuring that only significant changes in the phase relationship affect the score.
 
-2. **Amplitude Envelope Correlation (AEC)**
+3. **Amplitude Envelope Correlation (AEC)**
    - Measures correlation between amplitude envelopes of band-filtered signals
    - Options:
      - Standard AEC: Direct correlation of Hilbert envelopes.
