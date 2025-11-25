@@ -49,7 +49,7 @@ FREQUENCY_BANDS = {
     "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
-    "broadband": {"pattern": r"0\.5-30\.0|broadband", "range": (0.5, 47.0)},
+    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 47.0)},
 }
 
 def validate_frequency_bands():
