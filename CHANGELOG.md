@@ -15,3 +15,6 @@ Added explicit data rank to spatial filter function to remove problem of data ra
 
 ## Version 4.4.0:
 Added calculation of Phase Lag Time (PLT) to the quantitative analysis script, similar to the calculation in BrainWave (by C.J. Stam). 
+
+## Version 4.4.1:
+Added an option to select a custom (filtering) frequency band in the GUI during setup of preprocessing. If left empty, this option does noting. The quantitative analysis module was expanded to include an option to limit the number of epochs used per participant. 
