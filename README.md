@@ -50,6 +50,8 @@ If this is not the case, these channels might be included in operations like ave
 
 The frequency band settings now include the option to split the alpha band (into alpha1: 8-10 Hz and alpha2: 10-13 Hz) and beta band (into beta1: 13-20 Hz and beta2: 20-30 Hz). You can toggle these splits when setting up your batch processing (under the change filter bands option). This allows for more detailed analysis of specific frequency ranges.
 
+Additionally, there is also an option to include a custom frequency band in the GUI during setup of preprocessing. Leaving these fields empty will mean this band is ignored instead.
+
 ## Short video overviews
 [![EEG-Pype Part 1](https://img.youtube.com/vi/NGzrvGhQj0g/0.jpg)](http://www.youtube.com/watch?v=NGzrvGhQj0g "EEG-Pype Part 1")
 
@@ -290,7 +292,7 @@ Each band requires:
 Notes:
 
 - The "broadband" band is required and used for power/spectral variability calculations. You can also used unfiltered epochs for this though you should make sure they are recognized as broadband.
-- You can add custom bands following the same format.
+- You can add additional custom bands following the same format.
 - Patterns should match your epoch filename format.
 - Ranges must be within Nyquist frequency (sampling_rate/2).
 
