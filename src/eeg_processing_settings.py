@@ -18,7 +18,7 @@ f_size = 5  # font size filter frequency inputs
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
 
-EEG_version = "v4.4.0"
+EEG_version = "v4.4.1"
 
 # script run defaults
 settings["default_epoch_length"] = 8

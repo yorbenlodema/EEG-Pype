@@ -29,7 +29,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.4.0"
+EEG_version = "v4.4.1"
 
 # initial values
 progress_value1 = 20
@@ -246,13 +246,13 @@ def update_frequency_bands(config):
     layout = [
         [sg.Text("Frequency bands", tooltip=tooltip, font=font, background_color="white")],
         [
-            sg.Text("delta_low     ", background_color="white"),
+            sg.Text("delta_low      ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "delta_low"], key="-FILTER_DL-", size=f_size),
             sg.Text("delta_high    ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "delta_high"], key="-FILTER_DH-", size=f_size),
         ],
         [
-            sg.Text("theta_low     ", background_color="white"),
+            sg.Text("theta_low      ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "theta_low"], key="-FILTER_TL-", size=f_size),
             sg.Text("theta_high    ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "theta_high"], key="-FILTER_TH-", size=f_size),
@@ -266,19 +266,19 @@ def update_frequency_bands(config):
             )
         ],
         [
-            sg.Text("alpha_low     ", background_color="white"),
+            sg.Text("alpha_low      ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "alpha_low"], key="-FILTER_AL-", size=f_size),
             sg.Text("alpha_high    ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "alpha_high"], key="-FILTER_AH-", size=f_size),
         ],
         [
-            sg.Text("alpha1_low    ", background_color="white"),
+            sg.Text("alpha1_low     ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "alpha1_low"], key="-FILTER_A1L-", size=f_size),
             sg.Text("alpha1_high   ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "alpha1_high"], key="-FILTER_A1H-", size=f_size),
         ],
         [
-            sg.Text("alpha2_low    ", background_color="white"),
+            sg.Text("alpha2_low     ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "alpha2_low"], key="-FILTER_A2L-", size=f_size),
             sg.Text("alpha2_high   ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "alpha2_high"], key="-FILTER_A2H-", size=f_size),
@@ -292,29 +292,36 @@ def update_frequency_bands(config):
             )
         ],
         [
-            sg.Text("beta_low      ", background_color="white"),
+            sg.Text("beta_low       ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "beta_low"], key="-FILTER_BL-", size=f_size),
             sg.Text("beta_high     ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "beta_high"], key="-FILTER_BH-", size=f_size),
         ],
         [
-            sg.Text("beta1_low     ", background_color="white"),
+            sg.Text("beta1_low      ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "beta1_low"], key="-FILTER_B1L-", size=f_size),
             sg.Text("beta1_high    ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "beta1_high"], key="-FILTER_B1H-", size=f_size),
         ],
         [
-            sg.Text("beta2_low     ", background_color="white"),
+            sg.Text("beta2_low      ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "beta2_low"], key="-FILTER_B2L-", size=f_size),
             sg.Text("beta2_high    ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "beta2_high"], key="-FILTER_B2H-", size=f_size),
         ],
         [
-            sg.Text("broadband_low ", background_color="white"),
+            sg.Text("broadband_low  ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "broadband_low"], key="-FILTER_BRL-", size=f_size),
-            sg.Text("broadband_high", background_color="white"),
+            sg.Text("broadband_high ", background_color="white"),
             sg.Input(default_text=config["cut_off_frequency", "broadband_high"], key="-FILTER_BRH-", size=f_size),
         ],
+        [
+            sg.Text("custom_low     ", background_color="white"),
+            sg.Input(default_text=config.get(("cut_off_frequency", "custom_low"), ""), key="-FILTER_CL-", size=f_size),
+            sg.Text("custom_high    ", background_color="white"),
+            sg.Input(default_text=config.get(("cut_off_frequency", "custom_high"), ""), key="-FILTER_CH-", size=f_size),
+        ],
+    
         [sg.Button("Select", font=font)],
     ]
     window = sg.Window(
@@ -352,6 +359,10 @@ def update_frequency_bands(config):
                 config["cut_off_frequency", "beta2_high"] = values["-FILTER_B2H-"]
                 config["cut_off_frequency", "broadband_low"] = values["-FILTER_BRL-"]
                 config["cut_off_frequency", "broadband_high"] = values["-FILTER_BRH-"]
+                
+                config["cut_off_frequency", "custom_low"] = values["-FILTER_CL-"]
+                config["cut_off_frequency", "custom_high"] = values["-FILTER_CH-"]
+
                 config["frequency_bands_modified"] = 1
                 break
             except:
@@ -384,6 +395,20 @@ def get_active_frequency_bands(config):
 
     # Always include broadband
     active_bands.append(("broadband_low", "broadband_high"))
+
+    # Check for custom frequency band
+    try:
+        custom_low = config.get(("cut_off_frequency", "custom_low"), "")
+        custom_high = config.get(("cut_off_frequency", "custom_high"), "")
+        
+        # Only add if both values are present and can be converted to numbers
+        if custom_low and custom_high:
+            float(custom_low)
+            float(custom_high)
+            active_bands.append(("custom_low", "custom_high"))
+    except ValueError:
+        # If conversion to float fails (e.g. user typed text), we simply skip the custom band
+        pass
 
     return active_bands
 
