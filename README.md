@@ -124,7 +124,7 @@ When there's an update available on GitHub, follow these steps to update your lo
 1. Navigate to the Project Directory
 Open a terminal (or Anaconda Prompt on Windows) and navigate to your project directory:
 ```bash
-cd path/to/EEG-Pype
+cd path_to/EEG-Pype/src
 ```
 3. Activate the Conda Environment
 Ensure you're using the correct environment:
@@ -170,7 +170,7 @@ conda activate EEG-Pype
 ```
 After which your terminal line should say: *(EEG-Pype) →*
 ```bash
-cd path/to/EEG-Pype
+cd path_to/EEG-Pype/src
 python eeg_quantitative_analysis.py
 ```
 
