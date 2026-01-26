@@ -14,7 +14,7 @@ Miniconda is a tool that manages the Python coding language for us. [Miniconda D
 ## B. 
 Install Git:
 Git allows you to download the software from this website.
-- Windows: Download and install [Git for Windows](https://git-scm.com/download/win). During installation, you can keep clicking "Next" to accept all default settings.
+- Windows: Download and install [Git for Windows](https://git-scm.com/download/win) ("Standalone Installer" then "x64" for most users unless you have an ARM-based CPU). During installation, you can keep clicking "Next" to accept all default settings.
 - macOS: Git is usually installed automatically on Mac computers. To check, you can skip this step for now; if you need it later, your Mac will prompt you to install it.
 
 # 2. Download the EEG-Pype Code
