@@ -12,17 +12,18 @@ Miniconda is a tool that manages the Python coding language for us.
 
 ## B. Install Git
 Git allows you to download the software from this website.
-•	Windows: Download and install Git for Windows. During installation, you can keep clicking "Next" to accept all default settings.
-•	macOS: Git is usually installed automatically on Mac computers. To check, you can skip this step for now; if you need it later, your Mac will prompt you to install it.
+- Windows: Download and install [Git for Windows](https://git-scm.com/download/win). During installation, you can keep clicking "Next" to accept all default settings.
+- macOS: Git is usually installed automatically on Mac computers. To check, you can skip this step for now; if you need it later, your Mac will prompt you to install it.
 
 # 2. Download the EEG-Pype Code
 ## A.	Open your command tool:
-o	Windows: Open Anaconda Prompt (Miniconda3) (Do not use the standard Command Prompt/cmd).
-o	macOS: Open Terminal.
+- Windows: Open Anaconda Prompt (Miniconda3) (Do not use the standard Command Prompt/cmd).
+- macOS: Open Terminal.
 
 ## B. Copy and paste the following command into that window and press Enter:
-Bash
+```Bash
 git clone https://github.com/yorbenlodema/EEG-Pype.git
+```
 
 This downloads the EEG-Pype folder to your user folder.
 
