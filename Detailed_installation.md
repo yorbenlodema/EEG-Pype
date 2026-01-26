@@ -5,10 +5,10 @@ Note: You only need to do steps 1 through 4 once.
 ## A. 
 Install Miniconda:
 Miniconda is a tool that manages the Python coding language for us. [Miniconda Download link](https://www.anaconda.com/download/success).
-- Windows: Download the Miniconda Windows Installer (64-bit). Open the file and click "Next" through the installation. Important: If asked, leave the default settings as they are.
+- Windows: Under "Windows" download the "Windows 64-Bit Graphical Installer". Open the file and click "Next" through the installation. Important: If asked, leave the default settings as they are.
 - macOS:
-  - If you have a newer Mac (M1-M5 chips): Download the macOS Apple M1 64-bit installer.
-  - If you have an older Mac (Intel chip): Download the macOS Intel x86 64-bit installer.
+  - If you have a newer Mac (M1-M5 chips): Under "Mac" and "Miniconda" download the 64-Bit (Apple silicon) Graphical Installer.
+  - If you have an older Mac (Intel chip): Under "Mac" and "Miniconda" download the 64-Bit (Intel chip) Graphical Installer.
 
 
 ## B. 
