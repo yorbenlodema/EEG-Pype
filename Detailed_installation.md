@@ -4,12 +4,12 @@ Note: You only need to do steps 1 through 4 once.
 # 1. Install the necessary tools
 ## A. 
 Install Miniconda:
-Miniconda is a tool that manages the Python coding language for us.
-- Windows: Download the [Miniconda Windows Installer (64-bit)](https://docs.conda.io/en/latest/miniconda.html#windows-installers). Open the file and click "Next" through the installation. Important: If asked, leave the default settings as they are.
+Miniconda is a tool that manages the Python coding language for us. [Miniconda Download link](https://www.anaconda.com/download/success).
+- Windows: Download the Miniconda Windows Installer (64-bit). Open the file and click "Next" through the installation. Important: If asked, leave the default settings as they are.
 - macOS:
-  - If you have a newer Mac (M1, M2, M3 chips): Download the macOS Apple M1 64-bit installer.
+  - If you have a newer Mac (M1-M5 chips): Download the macOS Apple M1 64-bit installer.
   - If you have an older Mac (Intel chip): Download the macOS Intel x86 64-bit installer.
-  - Link to [macOS Installers](https://docs.conda.io/en/latest/miniconda.html#macos-installers).
+
 
 ## B. 
 Install Git:
