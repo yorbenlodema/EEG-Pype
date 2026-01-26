@@ -33,7 +33,7 @@ This downloads the EEG-Pype folder to your user folder.
 
 # 3. Create the Environment
 
-Now we will create the virtual environment or "sandbox" where the software lives.
+Now we will create the virtual environment or "sandbox" where the software is installed.
 ## A.	
 To enter the correct folder, copy and paste this command and press Enter:
 ```Bash
@@ -41,7 +41,7 @@ cd EEG-Pype
 ```
 
 ## B.	
-To reate the virtual environment, copy and paste this command and press Enter:
+To create the virtual environment, copy and paste this command and press Enter:
 
 ```Bash
 conda env create -f Environment.yml
@@ -49,7 +49,7 @@ conda env create -f Environment.yml
 Note: This step requires internet and may take several minutes. You will see lines of text scrolling; this is normal.
 
 ## C.	
-To activate the environment, we need to tell the computer to enter the virtual environment we just made. Run this command:
+To activate the environment we just made, run this command:
 ```Bash
 conda activate EEG-Pype
 ```
