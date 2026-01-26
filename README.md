@@ -57,7 +57,7 @@ Additionally, there is also an option to include a custom frequency band in the 
 
 ## Installation
 
-This guide will walk you through the process of setting up the EEG Preprocessing Tool using Miniconda. Miniconda provides an easy way to create isolated Python environments and manage package dependencies.
+This guide will quickly walk you through the process of setting up the EEG Preprocessing Tool using Miniconda. Miniconda provides an easy way to create isolated Python environments and manage package dependencies. If you are less experienced using these types of tools, [Read the detailed Installation Guide](Detailed_installation.md).
 
 ### 1. Install Miniconda and Git
 
