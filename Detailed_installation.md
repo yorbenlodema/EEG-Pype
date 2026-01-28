@@ -31,6 +31,10 @@ git clone https://github.com/yorbenlodema/EEG-Pype.git
 
 This downloads the EEG-Pype folder to your user folder.
 
+<img width="732" height="553" alt="SCR-20260128-oonz" src="https://github.com/user-attachments/assets/6294b9fb-dc61-40ef-98f0-b166c2ec10f0" />
+<img width="732" height="553" alt="SCR-20260128-oozi" src="https://github.com/user-attachments/assets/1d22c41d-c8ed-4bd6-b626-55406647508d" />
+
+
 # 3. Create the Environment
 
 Now we will create the virtual environment or "sandbox" where the software is installed.
@@ -39,6 +43,7 @@ To enter the correct folder, copy and paste this command and press Enter:
 ```Bash
 cd EEG-Pype
 ```
+<img width="732" height="553" alt="SCR-20260128-opcz" src="https://github.com/user-attachments/assets/34048fd6-033d-48ce-9d75-92b45abb03ac" />
 
 ## B.	
 To create the virtual environment, copy and paste this command and press Enter:
@@ -48,6 +53,8 @@ conda env create -f Environment.yml
 ```
 Note: This step requires internet and may take several minutes. You will see lines of text scrolling; this is normal.
 
+<img width="732" height="553" alt="SCR-20260128-opfm" src="https://github.com/user-attachments/assets/6989c322-db47-421f-8504-75c6eef67144" />
+
 ## C.	
 To activate the environment we just made, run this command:
 ```Bash
@@ -55,6 +62,8 @@ conda activate EEG-Pype
 ```
 
 Check: Look at the left side of your command line. It should now say (EEG-Pype) instead of (base).
+
+<img width="816" height="623" alt="SCR-20260128-oppy" src="https://github.com/user-attachments/assets/4eabec0e-9c5b-4300-a823-96f8090e3dfa" />
 
 # 4. Install the Graphical User Interface (PySimpleGUI). 
 Due to licensing changes, this specific part of the interface needs to be installed separately.
@@ -94,10 +103,16 @@ Run the preprocessing program:
 python eeg_processing_script.py
 ```
 
+<img width="858" height="665" alt="SCR-20260128-oqvq" src="https://github.com/user-attachments/assets/0858e148-99a6-4163-885d-a02344544c74" />
+<img width="1112" height="915" alt="SCR-20260128-oqyq" src="https://github.com/user-attachments/assets/e9822c4c-600f-4301-8d07-7f29a271ed42" />
+
 Or run the quantitative analysis module:
 ```Bash
 python eeg_quantitative_analysis.py
 ```
+
+<img width="858" height="665" alt="SCR-20260128-orab" src="https://github.com/user-attachments/assets/62c169e6-d208-4f61-bb84-5bc5bf5553dc" />
+<img width="861" height="857" alt="SCR-20260128-orbk" src="https://github.com/user-attachments/assets/e381854b-0b0f-4d24-a0ca-77c174f70607" />
 
 You can also choose to open and edit the scripts included in EEG-Pype in a code editor like Spyder or Visual Studio Code. While running the scripts from the command line gives the most stable performance, the eeg_processing_script.py script can also be run from your code editor. For the eeg_quantitative_analysis.py script, we have found that currently, only running from the command line is possible.
 
