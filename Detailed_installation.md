@@ -83,6 +83,11 @@ Navigate to the source folder:
 cd EEG-Pype/src
 ```
 
+Or if you were already in the EEG-Pype folder:
+```Bash
+cd src
+```
+
 ## D.	
 Run the preprocessing program:
 ```Bash
