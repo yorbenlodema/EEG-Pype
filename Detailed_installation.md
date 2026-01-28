@@ -37,7 +37,7 @@ This downloads the EEG-Pype folder to your user folder.
 
 # 3. Create the Environment
 
-Now we will create the virtual environment or "sandbox" where the software is installed.
+Now we will create the virtual environment or "sandbox" where the software is installed. This environment contains all packages (dependencies) that EEG-Pype relies on.
 ## A.	
 To enter the correct folder, copy and paste this command and press Enter:
 ```Bash
@@ -51,7 +51,7 @@ To create the virtual environment, copy and paste this command and press Enter:
 ```Bash
 conda env create -f Environment.yml
 ```
-Note: This step requires internet and may take several minutes. You will see lines of text scrolling; this is normal.
+Note: This step requires internet and may take a little while. You will see lines of text scrolling; this is normal.
 
 <img width="732" height="553" alt="SCR-20260128-opfm" src="https://github.com/user-attachments/assets/6989c322-db47-421f-8504-75c6eef67144" />
 
@@ -61,7 +61,7 @@ To activate the environment we just made, run this command:
 conda activate EEG-Pype
 ```
 
-Check: Look at the left side of your command line. It should now say (EEG-Pype) instead of (base).
+Check: Look at the left side of your command line. It should now say (EEG-Pype) instead of (base). 
 
 <img width="816" height="623" alt="SCR-20260128-oppy" src="https://github.com/user-attachments/assets/4eabec0e-9c5b-4300-a823-96f8090e3dfa" />
 
@@ -76,7 +76,7 @@ python -m pip install --force-reinstall --extra-index-url https://PySimpleGUI.ne
 ```
 
 # 5. Running the Software
-Now that everything is installed, here is how you open the software.
+Now that everything is installed, here is how you open the software. Make sure in Anaconda Prompt (Windows) or Terminal (Mac) you see (EEG-Pype) as the first thing on the last line, instead of (base). Seeing (EEG-Pype) here means that we have moved to or activated our virtual environment, containing the packages/dependencies EEG-Pype needs.
 
 ## A.	
 Open Anaconda Prompt (Miniconda3) (Windows) or Terminal (macOS).
