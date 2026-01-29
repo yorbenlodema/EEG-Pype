@@ -57,66 +57,117 @@ Additionally, there is also an option to include a custom frequency band in the 
 
 ## Installation
 
-This guide will quickly walk you through the process of setting up the EEG Preprocessing Tool using Miniconda. Miniconda provides an easy way to create isolated Python environments and manage package dependencies. If you are less experienced using these types of tools, [Read the detailed Installation Guide](Detailed_installation.md).
+This guide is designed for users who may not be familiar with coding or command-line tools. We will set up a virtual environment to keep all the software for EEG-Pype organized and install the necessary software step-by-step.
+Note: You only need to do steps 1 through 4 once.
 
-### 1. Install Miniconda and Git
+### 1. Install the necessary tools
+- Install Miniconda:
+   Miniconda is a tool that manages the Python coding language for us. [Miniconda Download link](https://www.anaconda.com/download/success).
+   - Windows: Under "Windows" download the "Windows 64-Bit Graphical Installer". Open the file and click "Next" through the installation. Important: If asked, leave the default settings as they are.
+   - macOS: If you have a newer Mac (M1-M5 chips): Under "Mac" and "Miniconda" download the 64-Bit (Apple silicon) Graphical Installer. If you have an older Mac (Intel chip): Under "Mac" and "Miniconda" download the 64-Bit (Intel chip) Graphical Installer.
 
-First, download and install Miniconda:
+- Install Git:
+   Git allows you to download the software from this website.
+   - Windows: Download and install [Git for Windows](https://git-scm.com/download/win) ("Standalone Installer" then "x64" for most users unless you have an ARM-based CPU). During installation, you can keep clicking "Next" to accept all default settings.
+   - macOS: Git is usually installed automatically on Mac computers. To check, you can skip this step for now; if you need it later, your Mac will prompt you to install it.
 
-- For Windows: [Miniconda Windows Installer](https://docs.conda.io/en/latest/miniconda.html#windows-installers)
-- For macOS: [Miniconda macOS Installer](https://docs.conda.io/en/latest/miniconda.html#macos-installers)
-- For Linux: [Miniconda Linux Installer](https://docs.conda.io/en/latest/miniconda.html#linux-installers)
+### 2. Download the EEG-Pype Code
+- Open your command tool:
+   - Windows: Open Anaconda Prompt (Miniconda3) (Do not use the standard Command Prompt/cmd).
+   - macOS: Open Terminal.
 
-Follow the installation instructions provided on the Miniconda website.
-
-If not done already, [install Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
-
-### 2. Clone the Repository
-
-Clone the EEG Preprocessing Tool repository:
-
-```bash
+- Copy and paste the following command into that window and press Enter:
+```Bash
 git clone https://github.com/yorbenlodema/EEG-Pype.git
-cd EEG-Pype
 ```
 
-### 3. Set up a Conda Environment
+This downloads the EEG-Pype folder to your user folder.
 
-Open a terminal (or Anaconda Prompt on Windows) and run the following commands:
+<img width="732" height="553" alt="SCR-20260128-oonz" src="https://github.com/user-attachments/assets/6294b9fb-dc61-40ef-98f0-b166c2ec10f0" />
+<img width="732" height="553" alt="SCR-20260128-oozi" src="https://github.com/user-attachments/assets/1d22c41d-c8ed-4bd6-b626-55406647508d" />
 
-```bash
-# Create a new conda environment with the required packages
+
+### 3. Create the Environment
+Now we will create the virtual environment or "sandbox" where the software is installed. This environment contains all packages (dependencies) that EEG-Pype relies on.
+
+- To enter the correct folder, copy and paste this command and press Enter:
+```Bash
+cd EEG-Pype
+```
+<img width="732" height="553" alt="SCR-20260128-opcz" src="https://github.com/user-attachments/assets/34048fd6-033d-48ce-9d75-92b45abb03ac" />
+
+- To create the virtual environment, copy and paste this command and press Enter:
+
+```Bash
 conda env create -f Environment.yml
+```
+Note: This step requires internet and may take a little while. You will see lines of text scrolling; this is normal.
 
-# Activate the new environment
+<img width="732" height="553" alt="SCR-20260128-opfm" src="https://github.com/user-attachments/assets/6989c322-db47-421f-8504-75c6eef67144" />
+	
+- To activate the environment we just made, run this command:
+```Bash
 conda activate EEG-Pype
 ```
 
-### 4. Install PySimpleGUI separately
+Check: Look at the left side of your command line. It should now say (EEG-Pype) instead of (base). 
 
-Please verify that the newly created EEG-Pype Conda environment is activated by checking if your Terminal/Command Prompt line starts with "(EEG-Pype)" and not "(base)". Then install the package using pip:
+<img width="816" height="623" alt="SCR-20260128-oppy" src="https://github.com/user-attachments/assets/4eabec0e-9c5b-4300-a823-96f8090e3dfa" />
 
-```bash
+### 4. Install the Graphical User Interface (PySimpleGUI). 
+Due to licensing changes, this specific part of the interface needs to be installed separately.
+	
+- Make sure your command line still says (EEG-Pype) on the left.
+- Copy and paste this exact line and press Enter:
+```Bash
 python -m pip install --force-reinstall --extra-index-url https://PySimpleGUI.net/install PySimpleGUI
 ```
 
-### 5. Verify Installation
+### 5. Running the Software
+Now that everything is installed, here is how you open the software. Make sure in Anaconda Prompt (Windows) or Terminal (Mac) you see (EEG-Pype) as the first thing on the last line, instead of (base). Seeing (EEG-Pype) here means that we have moved to or activated our virtual environment, containing the packages/dependencies EEG-Pype needs.
 
-To verify that the installation was successful, you can try running the main script (eeg_processing_script.py) in your favorite way (we have used Spyder to run the script during development). For the first use, it is important to select your newly created Miniconda environment in your IDE. In Spyder this is done via: preferences > Python interpreter > use the following interpreter. Here you should be able to select your EEG-Pype Conda environment. When opening the script in an IDE like Spyder, you can simply press 'run' to start the script. If everything is set up correctly, the script should run without any import errors.
+- Open Anaconda Prompt (Miniconda3) (Windows) or Terminal (macOS).	
+- Activate your environment by typing:
+```Bash
+conda activate EEG-Pype
+```
 
-## Troubleshooting
+- Navigate to the source folder:
+```Bash
+cd EEG-Pype/src
+```
 
-If you encounter any issues during installation:
+Or if you were already in the EEG-Pype folder:
+```Bash
+cd src
+```
 
-1. Make sure you have activated the conda environment (`conda activate EEG-Pype`).
-2. Try updating pip: `python -m pip install --upgrade pip`
-3. If you encounter any dependency conflicts, you can try installing dependencies manually:
-   ```bash
-   conda install numpy pandas matplotlib scikit-learn
-   pip install PySimpleGUI mne
-   ```
+- Run the preprocessing program:
+```Bash
+python eeg_processing_script.py
+```
 
-For any further issues, please open an issue on the [GitHub repository](https://github.com/snorben/EEG-Pype/issues).
+<img width="858" height="665" alt="SCR-20260128-oqvq" src="https://github.com/user-attachments/assets/0858e148-99a6-4163-885d-a02344544c74" />
+<img width="1112" height="915" alt="SCR-20260128-oqyq" src="https://github.com/user-attachments/assets/e9822c4c-600f-4301-8d07-7f29a271ed42" />
+
+Or run the quantitative analysis module:
+```Bash
+python eeg_quantitative_analysis.py
+```
+
+<img width="858" height="665" alt="SCR-20260128-orab" src="https://github.com/user-attachments/assets/62c169e6-d208-4f61-bb84-5bc5bf5553dc" />
+<img width="861" height="857" alt="SCR-20260128-orbk" src="https://github.com/user-attachments/assets/e381854b-0b0f-4d24-a0ca-77c174f70607" />
+
+You can also choose to open and edit the scripts included in EEG-Pype in a code editor like Spyder or Visual Studio Code. While running the scripts from the command line gives the most stable performance, the eeg_processing_script.py script can also be run from your code editor. For the eeg_quantitative_analysis.py script, we have found that currently, only running from the command line is possible.
+
+### Summary for Daily Use
+Next time you want to use the software, you only need to do this:
+1.	Open Anaconda Prompt (Windows) or Terminal (Mac).
+2.	Type: conda activate EEG-Pype
+3.	Type: cd EEG-Pype/src
+4.	Type: python eeg_processing_script.py
+
+For any issues, please feel free to open an issue on the [GitHub repository](https://github.com/snorben/EEG-Pype/issues).
 
 ## Updating the Software
 
