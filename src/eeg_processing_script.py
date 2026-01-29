@@ -29,7 +29,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.4.1"
+EEG_version = "v4.4.2"
 
 # initial values
 progress_value1 = 20
@@ -603,47 +603,197 @@ def ask_epoch_selection(config):
 
 
 def ask_input_file_pattern(config, settings):
-    """Ask input_file_patterns."""
-    # note: input_file_patterns read from eeg_processing_settings file
+    """Ask user to select sensor layout / montage with preview capability.
+    
+    Provides:
+    - Grouped list of montage options
+    - Preview button to visualize sensor positions
+    - Help tooltip and documentation link
+    """
     txt = settings["input_file_patterns", "text"]
-    tooltip = settings["input_file_patterns", "tooltip"]
+    tooltip_text = settings["input_file_patterns", "tooltip"]
+    url = "https://mne.tools/stable/auto_tutorials/intro/40_sensor_locations.html"
+
+    # Create visual groupings in the listbox
+    # We manually define groups to avoid duplicate entries
+    display_items = [
+        "── Auto-Detect ──",
+        "Use Native Coordinates (Auto)",
+        "── Standard Layouts ──",
+        "Standard 10-20 (94 channels)",
+        "Standard 10-05 (343 channels)",
+        "── BioSemi Caps ──",
+        "BioSemi 32-channel",
+        "BioSemi 64-channel",
+        "BioSemi 128-channel",
+        "BioSemi 160-channel",
+        "BioSemi 256-channel",
+        "── EasyCap ──",
+        "EasyCap M1 (74 channels)",
+        "EasyCap M10 (61 channels)",
+        "── GSN/EGI ──",
+        "GSN-HydroCel 32-channel",
+        "GSN-HydroCel 64-channel",
+        "GSN-HydroCel 128-channel",
+        "GSN-HydroCel 256-channel",
+        "── MGH ──",
+        "MGH 60-channel",
+        "MGH 70-channel",
+        "── Text File Import ──",
+        "Import .txt with BioSemi 64 names",
+        "Import .txt with BioSemi 32 names",
+        "Import .txt with 10-20 names",
+        "Import .txt with 10-05 names",
+        "Import .txt for MEG data",
+        "Import .txt with generic names",
+    ]
+
     layout = [
-        [sg.Text(txt, tooltip=tooltip, background_color="white")],
+        [
+            sg.Text(txt, font=("Default", 12, "bold"), background_color="white"),
+            sg.Text(
+                "(?)", 
+                text_color="blue", 
+                tooltip=tooltip_text, 
+                background_color="white", 
+                enable_events=True, 
+                key="-HELP-",
+                font=("Default", 12, "underline"),
+            ),
+        ],
         [
             sg.Listbox(
-                values=settings["input_file_patterns"],
-                size=(15, None),
-                enable_events=True,
-                bind_return_key=True,
+                values=display_items,
+                size=(45, 18),
+                enable_events=False,  # Changed to False - don't trigger on click
+                bind_return_key=False,  # Changed to False
                 select_mode="single",
                 key="_LISTBOX_",
                 background_color="white",
+                font=("Default", 11),
             )
         ],
-        [sg.Button("Ok", bind_return_key=True)],
+        [
+            sg.Button("Select", bind_return_key=True, button_color=button_color),
+            sg.Button("Preview Layout", key="-PREVIEW-"),
+            sg.Push(background_color="white"),
+            sg.Button("More Info", key="-MORE_INFO-"),
+        ],
     ]
-    window = sg.Window(
-        "EEG processing input parameters",
+
+    window_montage = sg.Window(
+        "Select Sensor Layout / Montage",
         layout,
         modal=True,
         use_custom_titlebar=True,
         font=font,
         location=(100, 100),
         background_color="white",
+        finalize=True,
     )
+
     while True:
-        event, values = window.read()
-        if event == "Ok":
-            try:
-                if values["_LISTBOX_"]:
-                    selection = values["_LISTBOX_"]
-                    selection = selection[0]
-                    config["input_file_pattern"] = selection
-                    break
-            except:  # remove?
-                sg.popup_error("No valid selection", location=(100, 100), font=font)
-                window.close()
-    window.close()
+        event, values = window_montage.read()
+
+        if event in (sg.WIN_CLOSED, "Exit"):
+            window_montage.close()
+            return config
+
+        if event == "-MORE_INFO-":
+            wb.open_new_tab(url)
+            continue
+
+        if event == "-PREVIEW-":
+            if not values["_LISTBOX_"]:
+                sg.popup_ok(
+                    "Please select a layout to preview.",
+                    title="No Selection",
+                    location=(100, 100),
+                    font=font,
+                )
+                continue
+
+            selection = values["_LISTBOX_"][0]
+            
+            # Skip separator lines
+            if selection.startswith("──"):
+                sg.popup_ok(
+                    "Please select an actual layout option, not a section header.",
+                    title="Invalid Selection",
+                    location=(100, 100),
+                    font=font,
+                )
+                continue
+
+            # Get the montage name
+            montage_name = get_montage_name_from_selection(selection)
+
+            if montage_name in ("native", "MEG", "generic", "n/a"):
+                sg.popup_ok(
+                    f"'{selection}' cannot be previewed.\n\n"
+                    "• 'Native' mode uses positions from your data file\n"
+                    "• 'MEG' and 'generic' modes don't have fixed positions",
+                    title="Preview Not Available",
+                    location=(100, 100),
+                    font=font,
+                )
+            else:
+                try:
+                    montage = mne.channels.make_standard_montage(montage_name)
+                    dummy_info = mne.create_info(
+                        ch_names=montage.ch_names, 
+                        sfreq=100, 
+                        ch_types="eeg"
+                    )
+                    dummy_info.set_montage(montage)
+                    
+                    fig = mne.viz.plot_sensors(
+                        dummy_info,
+                        show_names=True,
+                        title=f"Preview: {montage_name} ({len(montage.ch_names)} channels)",
+                        show=True,
+                        block=False,
+                    )
+                except Exception as e:
+                    sg.popup_error(
+                        f"Could not preview '{montage_name}':\n\n{e}",
+                        title="Preview Error",
+                        location=(100, 100),
+                        font=font,
+                    )
+            continue
+
+        if event == "Select":
+            if not values["_LISTBOX_"]:
+                sg.popup_ok(
+                    "Please select an option.",
+                    title="No Selection",
+                    location=(100, 100),
+                    font=font,
+                )
+                continue
+
+            selection = values["_LISTBOX_"][0]
+
+            # Skip separator lines
+            if selection.startswith("──"):
+                sg.popup_ok(
+                    "Please select an actual layout option, not a section header.",
+                    title="Invalid Selection",
+                    location=(100, 100),
+                    font=font,
+                )
+                continue
+
+            config["input_file_pattern"] = selection
+            
+            # Store the montage name directly for easier access later
+            config["montage_name"] = get_montage_name_from_selection(selection)
+            
+            window_montage.close()
+            return config
+
+    window_montage.close()
     return config
 
 
@@ -707,15 +857,11 @@ def implement_channel_corrections(raw, config):
                 raw.rename_channels({old_name: new_name})
         return raw, config
 
-    # Check if this is a file type that needs channel name verification
-    if config["file_pattern"] in settings["no_montage_patterns"]:
-        # These file types have their own channel information, skip correction
-        return raw, config
-
-    # Use the existing montage mapping from settings
-    montage_name = settings["montage", config["input_file_pattern"]]
-
-    if montage_name == "n/a":
+    # Get the montage name from config (set during ask_input_file_pattern)
+    montage_name = config.get("montage_name", get_montage_name_from_selection(config.get("input_file_pattern", "")))
+    
+    # Skip channel correction for native/auto modes or special cases
+    if montage_name in ("native", "MEG", "generic", "n/a", ""):
         return raw, config
 
     # Get channel names directly from MNE's montage
@@ -1193,225 +1339,514 @@ def create_spatial_filter(raw_b):
     )
 
 
-def create_raw(config, montage, no_montage_files):
-    """Load a raw EEG file using the correct MNE function based on the file type.
-
-    Handles .txt files with configurable header structure.
-
-    In the settings file you can change:
-    - header_rows: Total number of header rows to skip (default: 1)
-    - channel_names_row: Row number containing channel names (0-based, default: 0 which equals first row)
+def get_montage_name_from_selection(selection):
+    """Convert user's dropdown selection to MNE montage name.
+    
+    Returns:
+        str: MNE montage name, "native", "MEG", or "generic"
     """
-    if config["file_pattern"] == "*.txt":
-        if config["channel_names"] == []:
-            if config["channel_names_row"] is None and settings["montage", config["input_file_pattern"]] == "biosemi64":
-                # Use biosemi64 names only if no header and biosemi64 montage
-                ch_names = [
-                    "Fp1",
-                    "AF7",
-                    "AF3",
-                    "F1",
-                    "F3",
-                    "F5",
-                    "F7",
-                    "FT7",
-                    "FC5",
-                    "FC3",
-                    "FC1",
-                    "C1",
-                    "C3",
-                    "C5",
-                    "T7",
-                    "TP7",
-                    "CP5",
-                    "CP3",
-                    "CP1",
-                    "P1",
-                    "P3",
-                    "P5",
-                    "P7",
-                    "P9",
-                    "PO7",
-                    "PO3",
-                    "O1",
-                    "Iz",
-                    "Oz",
-                    "POz",
-                    "Pz",
-                    "CPz",
-                    "Fpz",
-                    "Fp2",
-                    "AF8",
-                    "AF4",
-                    "AFz",
-                    "Fz",
-                    "F2",
-                    "F4",
-                    "F6",
-                    "F8",
-                    "FT8",
-                    "FC6",
-                    "FC4",
-                    "FC2",
-                    "FCz",
-                    "Cz",
-                    "C2",
-                    "C4",
-                    "C6",
-                    "T8",
-                    "TP8",
-                    "CP6",
-                    "CP4",
-                    "CP2",
-                    "P2",
-                    "P4",
-                    "P6",
-                    "P8",
-                    "P10",
-                    "PO8",
-                    "PO4",
-                    "O2",
-                ]
-            elif config["channel_names_row"] is None and settings["montage", config["input_file_pattern"]] == "MEG":
-                ch_names = [
-                    "Fp1",
-                    "AF7",
-                    "AF3",
-                    "F1",
-                    "F3",
-                    "F5",
-                    "F7",
-                    "FT7",
-                    "FC5",
-                    "FC3",
-                    "FC1",
-                    "C1",
-                    "C3",
-                    "C5",
-                    "T7",
-                    "TP7",
-                    "CP5",
-                    "CP3",
-                    "CP1",
-                    "P1",
-                    "P3",
-                    "P5",
-                    "P7",
-                    "P9",
-                    "PO7",
-                    "PO3",
-                    "O1",
-                    "Iz",
-                    "Oz",
-                    "POz",
-                    "Pz",
-                    "CPz",
-                    "Fpz",
-                    "Fp2",
-                    "AF8",
-                    "AF4",
-                    "AFz",
-                    "Fz",
-                    "F2",
-                    "F4",
-                    "F6",
-                    "F8",
-                    "FT8",
-                    "FC6",
-                    "FC4",
-                    "FC2",
-                    "FCz",
-                    "Cz",
-                    "C2",
-                    "C4",
-                    "C6",
-                    "T8",
-                    "TP8",
-                    "CP6",
-                    "CP4",
-                    "CP2",
-                    "P2",
-                    "P4",
-                    "P6",
-                    "P8",
-                    "P10",
-                    "PO8",
-                    "PO4",
-                    "O2",
-                ]
-            elif config["channel_names_row"] is not None:
-                # Read channel names from header if specified
-                with open(file_path) as file:
-                    for _ in range(config["channel_names_row"] + 1):
-                        header = file.readline().strip()
-                    ch_names = header.split()
-            else:
-                # Generate generic names if no header and not biosemi64
-                with open(file_path) as file:
-                    first_line = file.readline().strip()
-                    num_channels = len(first_line.split())
-                    ch_names = [f"CH{i + 1}" for i in range(num_channels)]
-        else:
-            ch_names = config["channel_names"]
+    # Check in standard montage options
+    if selection in settings["montage_options"]:
+        return settings["montage_options"][selection]
+    
+    # Check in txt import options
+    if selection in settings["txt_import_options"]:
+        return settings["txt_import_options"][selection]
+    
+    # Fallback for legacy config files
+    for legacy_key, montage_name in settings.get("legacy_montage_map", {}).items():
+        if selection in str(legacy_key):
+            return montage_name
+    
+    # Default fallback
+    return "native"
 
-        # Read data after skipping header rows
-        df = pd.read_csv(file_path, sep="\s+", skiprows=config["header_rows"])
 
-        if settings["montage", config["input_file_pattern"]] == "MEG":
-            ch_types = ["meg"] * len(ch_names)
-        else:
-            ch_types = ["eeg"] * len(ch_names)
-        info = mne.create_info(ch_names=ch_names, sfreq=config["sample_frequency"], ch_types=ch_types)
+def is_txt_import(selection):
+    """Check if the user selected a .txt import option."""
+    return selection in settings["txt_import_options"] or "Import .txt" in selection
 
-        # Ensure we're only taking the data columns
-        df = df.iloc[:, 0 : len(ch_names)]
 
+def get_channel_names_for_montage(montage_name, file_path=None, config=None):
+    """Get channel names for a given montage or from file header.
+    
+    Args:
+        montage_name: MNE montage name or special value ("MEG", "generic")
+        file_path: Path to .txt file (for header reading)
+        config: Config dict with header_rows and channel_names_row settings
+        
+    Returns:
+        list: Channel names
+    """
+    # Standard montage - get names from MNE
+    if montage_name not in ("native", "MEG", "generic", "n/a"):
         try:
-            df = df.astype(float)
-        except ValueError as e:
-            msg = "Non-numeric values found in the data. Please check your file format."
-            raise ValueError(msg) from e
+            montage = mne.channels.make_standard_montage(montage_name)
+            return list(montage.ch_names)
+        except Exception as e:
+            print(f"Warning: Could not get channel names for {montage_name}: {e}")
+    
+    # For .txt files, try to read from header
+    if file_path and config:
+        channel_names_row = config.get("channel_names_row")
+        if channel_names_row is not None:
+            try:
+                with open(file_path) as f:
+                    for _ in range(channel_names_row + 1):
+                        header = f.readline().strip()
+                    return header.split()
+            except Exception as e:
+                print(f"Warning: Could not read channel names from header: {e}")
+        
+        # Generate generic names based on file content
+        try:
+            with open(file_path) as f:
+                # Skip header rows
+                for _ in range(config.get("header_rows", 1)):
+                    f.readline()
+                first_data_line = f.readline().strip()
+                num_channels = len(first_data_line.split())
+                return [f"CH{i+1}" for i in range(num_channels)]
+        except Exception as e:
+            print(f"Warning: Could not determine channel count: {e}")
+    
+    return []
 
-        samples = df.T * 1e-6  # Scaling from µV to V
-        raw = mne.io.RawArray(samples, info)
 
-        missing_channels = [str(col) for col in df.columns if df[col].isna().any()]
+def detect_delimiter(file_path, header_rows=1):
+    """Auto-detect the delimiter used in a text file."""
+    import csv
+    
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+        # Skip header rows
+        for _ in range(header_rows):
+            f.readline()
+        # Read a sample of data lines
+        sample = ''.join([f.readline() for _ in range(5)])
+    
+    # Use csv.Sniffer to detect delimiter
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=',;\t ')
+        return dialect.delimiter
+    except csv.Error:
+        # Fallback: count occurrences of common delimiters
+        delimiters = {'\t': 0, ',': 0, ';': 0, ' ': 0}
+        for char in sample:
+            if char in delimiters:
+                delimiters[char] += 1
+        
+        # Prefer tab, then comma, then semicolon, then space
+        if delimiters['\t'] > 5:
+            return '\t'
+        elif delimiters[','] > 5:
+            return ','
+        elif delimiters[';'] > 5:
+            return ';'
+        else:
+            return r'\s+'  # Fall back to whitespace regex
 
-        if missing_channels:
-            missing_str = ", ".join(missing_channels)
-            sg.popup_ok(
-                f"Warning: channels with missing values found:\n{missing_str}\nPlease drop these channel(s)!",
-                location=(100, 100),
-            )
 
-    elif config["file_pattern"] == "*.bdf":
-        raw = mne.io.read_raw_bdf(file_path, preload=True)
-    elif config["file_pattern"] == "*.vhdr":
-        raw = mne.io.read_raw_brainvision(file_path, preload=True)
-    elif config["file_pattern"] == "*.edf":
-        raw = mne.io.read_raw_edf(file_path, preload=True)
-    elif config["file_pattern"] == "*.fif":
-        raw = mne.io.read_raw_fif(file_path, preload=True)
-        raw.pick_types(eeg=True, meg=False, eog=False)
-    elif config["file_pattern"] == "*.cnt":
-        raw = mne.io.read_raw_cnt(file_path, preload=True)
-        raw.pick_types(eeg=True, meg=False, eog=False)
+def detect_encoding(file_path, preferred_encoding="auto"):
+    """Detect file encoding, with fallback to common encodings.
+    
+    Args:
+        file_path: Path to the file
+        preferred_encoding: If not "auto", use this encoding directly
+        
+    Returns:
+        str: Detected or specified encoding
+    """
+    if preferred_encoding != "auto":
+        return preferred_encoding
+    
+    # Try to use chardet if available
+    try:
+        import chardet
+        with open(file_path, 'rb') as f:
+            result = chardet.detect(f.read(10000))
+        if result['confidence'] > 0.7:
+            return result['encoding']
+    except ImportError:
+        pass
+    
+    # Try common encodings
+    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+    for enc in encodings:
+        try:
+            with open(file_path, 'r', encoding=enc) as f:
+                f.read(1000)
+            return enc
+        except UnicodeDecodeError:
+            continue
+    
+    return 'utf-8'  # Default fallback
 
-    raw, config = implement_channel_corrections(raw, config)
 
-    ecg_map = {
-        ch_name: "ecg"
-        for ch_name in raw.ch_names
-        if "ecg" in ch_name.lower() and raw.get_channel_types([ch_name])[0] != "ecg"
+def get_delimiter_from_setting(setting_value):
+    """Convert settings delimiter name to actual delimiter character."""
+    delimiter_map = {
+        "auto": None,  # Will trigger auto-detection
+        "tab": '\t',
+        "comma": ',',
+        "semicolon": ';',
+        "space": r'\s+',
     }
+    return delimiter_map.get(setting_value, None)
+
+
+def load_txt_file(file_path, config):
+    """Load EEG data from a text file with automatic delimiter detection.
+    
+    Supports:
+    - Tab-separated values
+    - Comma-separated values (CSV)
+    - Semicolon-separated values
+    - Whitespace-separated values
+    - European decimal notation (comma as decimal separator)
+    - Configurable scaling factor
+    - Configurable encoding
+    
+    Args:
+        file_path: Path to the .txt file
+        config: Configuration dictionary
+        
+    Returns:
+        mne.io.Raw: Raw EEG object
+    """
+    montage_name = get_montage_name_from_selection(config["input_file_pattern"])
+    header_rows = config.get("header_rows", 1)
+    
+    # Get delimiter (from settings or auto-detect)
+    delimiter_setting = config.get("txt_delimiter", "auto")
+    delimiter = get_delimiter_from_setting(delimiter_setting)
+    
+    if delimiter is None:  # Auto-detect
+        delimiter = detect_delimiter(file_path, header_rows)
+        msg = f"Auto-detected delimiter: {repr(delimiter)}"
+        window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    # Get encoding
+    encoding_setting = config.get("txt_encoding", "auto")
+    encoding = detect_encoding(file_path, encoding_setting)
+    msg = f"Using encoding: {encoding}"
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    # Get scaling factor
+    scaling_factor = config.get("txt_scaling_factor", 1e-6)
+    
+    # Get decimal separator
+    decimal_sep = config.get("txt_decimal_separator", ".")
+    
+    # Get channel names
+    if config.get("channel_names"):
+        ch_names = config["channel_names"]
+    else:
+        ch_names = get_channel_names_for_montage(montage_name, file_path, config)
+    
+    if not ch_names:
+        raise ValueError(
+            f"Could not determine channel names for {file_path}. "
+            "Please check your file format and montage selection."
+        )
+    
+    # Read the data
+    try:
+        read_kwargs = {
+            'skiprows': header_rows,
+            'encoding': encoding,
+        }
+        
+        # Handle decimal separator for European notation
+        if decimal_sep == ',':
+            read_kwargs['decimal'] = ','
+        
+        if delimiter == r'\s+':
+            read_kwargs['sep'] = delimiter
+            read_kwargs['engine'] = 'python'
+        else:
+            read_kwargs['sep'] = delimiter
+        
+        df = pd.read_csv(file_path, **read_kwargs)
+        
+    except Exception as e:
+        # If initial read fails and we haven't tried European decimal, try it
+        if decimal_sep != ',':
+            try:
+                read_kwargs['decimal'] = ','
+                df = pd.read_csv(file_path, **read_kwargs)
+                msg = "Note: Successfully parsed using European decimal notation (comma)"
+                window["-RUN_INFO-"].update(msg + "\n", append=True)
+            except Exception:
+                raise ValueError(
+                    f"Could not parse {file_path}.\n"
+                    f"Detected delimiter: {repr(delimiter)}\n"
+                    f"Encoding: {encoding}\n"
+                    f"Original error: {e}"
+                ) from e
+        else:
+            raise ValueError(
+                f"Could not parse {file_path}.\n"
+                f"Delimiter: {repr(delimiter)}\n"
+                f"Encoding: {encoding}\n"
+                f"Error: {e}"
+            ) from e
+    
+    # Ensure we only take the data columns matching channel count
+    if len(df.columns) > len(ch_names):
+        msg = f"Note: File has {len(df.columns)} columns, using first {len(ch_names)} for channels"
+        window["-RUN_INFO-"].update(msg + "\n", append=True)
+        df = df.iloc[:, :len(ch_names)]
+    elif len(df.columns) < len(ch_names):
+        msg = f"Warning: File has {len(df.columns)} columns but expected {len(ch_names)} channels"
+        window["-RUN_INFO-"].update(msg + "\n", append=True)
+        ch_names = ch_names[:len(df.columns)]
+    
+    # Handle any remaining string columns (European decimals in object dtype)
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            try:
+                df[col] = df[col].str.replace(',', '.').astype(float)
+            except (ValueError, AttributeError):
+                pass
+    
+    # Validate data is numeric
+    try:
+        df = df.astype(float)
+    except ValueError as e:
+        # Identify problematic columns
+        non_numeric_cols = []
+        for col in df.columns:
+            try:
+                df[col].astype(float)
+            except ValueError:
+                non_numeric_cols.append(str(col))
+        
+        raise ValueError(
+            f"Non-numeric values found in {file_path}.\n"
+            f"Problematic columns: {', '.join(non_numeric_cols)}\n"
+            "Check your header_rows setting or file format."
+        ) from e
+    
+    # Check for missing values
+    missing_channels = [str(col) for col in df.columns if df[col].isna().any()]
+    if missing_channels:
+        missing_str = ", ".join(missing_channels)
+        sg.popup_ok(
+            f"Warning: Channels with missing values found:\n{missing_str}\n"
+            "Please drop these channel(s) during preprocessing!",
+            title="Missing Data Warning",
+            location=(100, 100),
+            font=font,
+        )
+    
+    # Determine channel types
+    ch_types = ["meg"] * len(ch_names) if montage_name == "MEG" else ["eeg"] * len(ch_names)
+    
+    # Create MNE info and raw object
+    info = mne.create_info(
+        ch_names=ch_names,
+        sfreq=config["sample_frequency"],
+        ch_types=ch_types
+    )
+    
+    # Apply scaling factor
+    samples = df.T.values * scaling_factor
+    
+    # Log scaling info
+    if scaling_factor == 1e-6:
+        msg = "Scaling: µV → V (factor: 1e-6)"
+    elif scaling_factor == 1.0:
+        msg = "Scaling: None (data assumed to be in Volts)"
+    else:
+        msg = f"Scaling factor: {scaling_factor}"
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    raw = mne.io.RawArray(samples, info)
+    
+    return raw
+
+
+def load_mne_file(file_path, config):
+    """Load EEG data using MNE's generic reader.
+    
+    Args:
+        file_path: Path to the EEG file
+        config: Configuration dictionary
+        
+    Returns:
+        mne.io.Raw: Raw EEG object
+    """
+    try:
+        raw = mne.io.read_raw(file_path, preload=True)
+    except Exception as e:
+        # Provide user-friendly error messages
+        error_msg = str(e).lower()
+        
+        if "channel" in error_msg:
+            user_msg = (
+                f"Error loading {Path(file_path).name}:\n\n"
+                "Channel-related error. This might mean:\n"
+                "• The file format wasn't recognized correctly\n"
+                "• The file is corrupted or incomplete\n\n"
+                f"Technical details: {e}"
+            )
+        elif "permission" in error_msg or "access" in error_msg:
+            user_msg = (
+                f"Error loading {Path(file_path).name}:\n\n"
+                "Cannot access the file. Please check:\n"
+                "• The file is not open in another program\n"
+                "• You have permission to read the file"
+            )
+        else:
+            user_msg = (
+                f"Error loading {Path(file_path).name}:\n\n"
+                f"{e}\n\n"
+                "If this is an unusual file format, please contact support."
+            )
+        
+        sg.popup_error(user_msg, title="File Loading Error", location=(100, 100), font=font)
+        raise
+    
+    return raw
+
+
+def apply_montage_to_raw(raw, config):
+    """Apply montage to raw data based on user selection.
+    
+    Args:
+        raw: MNE Raw object
+        config: Configuration dictionary
+        
+    Returns:
+        mne.io.Raw: Raw object with montage applied (if applicable)
+    """
+    montage_name = get_montage_name_from_selection(config["input_file_pattern"])
+    
+    # Skip montage application for these cases
+    if montage_name in ("native", "MEG", "generic", "n/a"):
+        msg = f"Using {'native coordinates from file' if montage_name == 'native' else montage_name + ' mode'}"
+        window["-RUN_INFO-"].update(msg + "\n", append=True)
+        return raw
+    
+    # Create and apply montage
+    try:
+        montage = mne.channels.make_standard_montage(montage_name)
+        
+        # Check for channel name mismatches before applying
+        raw_channels = set(raw.ch_names)
+        montage_channels = set(montage.ch_names)
+        matching = raw_channels & montage_channels
+        
+        if len(matching) == 0:
+            sg.popup_ok(
+                f"Warning: No channel names match the '{montage_name}' montage!\n\n"
+                f"Your channels: {', '.join(list(raw_channels)[:5])}...\n"
+                f"Expected: {', '.join(list(montage_channels)[:5])}...\n\n"
+                "Consider using 'Channel Name Correction' or selecting a different montage.",
+                title="Montage Mismatch Warning",
+                location=(100, 100),
+                font=font,
+            )
+        elif len(matching) < len(raw_channels) * 0.5:
+            unmatched = raw_channels - montage_channels
+            sg.popup_ok(
+                f"Warning: Only {len(matching)}/{len(raw_channels)} channels match the montage.\n\n"
+                f"Unmatched channels: {', '.join(list(unmatched)[:10])}"
+                f"{'...' if len(unmatched) > 10 else ''}\n\n"
+                "These channels will not have position information.",
+                title="Partial Montage Match",
+                location=(100, 100),
+                font=font,
+            )
+        
+        raw.set_montage(montage=montage, on_missing="ignore")
+        msg = f"Applied '{montage_name}' montage ({len(matching)}/{len(raw_channels)} channels matched)"
+        window["-RUN_INFO-"].update(msg + "\n", append=True)
+        
+    except Exception as e:
+        sg.popup_error(
+            f"Error applying montage '{montage_name}':\n{e}\n\n"
+            "Continuing without montage.",
+            title="Montage Error",
+            location=(100, 100),
+            font=font,
+        )
+    
+    return raw
+
+
+def set_ecg_channel_types(raw):
+    """Auto-detect and set ECG channel types.
+    
+    Args:
+        raw: MNE Raw object
+        
+    Returns:
+        mne.io.Raw: Raw object with ECG channels properly typed
+    """
+    ecg_map = {}
+    for ch_name in raw.ch_names:
+        if "ecg" in ch_name.lower() and raw.get_channel_types([ch_name])[0] != "ecg":
+            ecg_map[ch_name] = "ecg"
+    
     if ecg_map:
         raw.set_channel_types(mapping=ecg_map, on_unit_change="ignore", verbose=False)
-        print(f"Automatically setting channel types for: {list(ecg_map.keys())}")
+        msg = f"Auto-detected ECG channels: {', '.join(ecg_map.keys())}"
+        window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    return raw
 
-    if config["file_pattern"] not in no_montage_files and montage is not None:
-        raw.set_montage(montage=montage, on_missing="ignore")
 
+def create_raw(config, montage=None, no_montage_files=None):
+    """Load a raw EEG file and apply appropriate montage.
+    
+    This function handles all supported file formats:
+    - .txt files: Custom parser with configurable header handling
+    - All other formats: MNE's generic reader (auto-detects format)
+    
+    Args:
+        config: Configuration dictionary containing file_path and settings
+        montage: Deprecated, kept for backward compatibility (ignored)
+        no_montage_files: Deprecated, kept for backward compatibility (ignored)
+        
+    Returns:
+        tuple: (raw, config) - MNE Raw object and updated config
+    """
+    file_path = config["file_path"]
+    file_extension = Path(file_path).suffix.lower()
+    
+    msg = f"Loading file: {Path(file_path).name}"
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    # Step 1: Load the raw data
+    if is_txt_import(config["input_file_pattern"]) or file_extension == ".txt":
+        raw = load_txt_file(file_path, config)
+    else:
+        raw = load_mne_file(file_path, config)
+        
+        # For certain formats, pick only EEG channels
+        if file_extension in [".fif", ".cnt"]:
+            try:
+                raw.pick(picks=["eeg"], exclude=[])
+            except Exception:
+                # If no EEG channels found, keep all
+                pass
+    
+    # Step 2: Apply channel name corrections (if any)
+    raw, config = implement_channel_corrections(raw, config)
+    
+    # Step 3: Auto-detect and set ECG channel types
+    raw = set_ecg_channel_types(raw)
+    
+    # Step 4: Apply montage based on user selection
+    raw = apply_montage_to_raw(raw, config)
+    
+    # Step 5: Store sample frequency in config
     config["sample_frequency"] = raw.info["sfreq"]
+    
+    msg = f"Loaded {len(raw.ch_names)} channels at {config['sample_frequency']} Hz"
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
     return raw, config
 
 
@@ -1476,6 +1911,7 @@ def perform_bad_channels_selection(raw, config):
     config[file_name, "bad"] = raw.info["bads"]
     return raw, config
 
+
 def plot_power_spectrum(raw, filtered=False):
     """Plot the power spectrum of the separate EEG channels using Welch's method.
 
@@ -1503,6 +1939,7 @@ def plot_power_spectrum(raw, filtered=False):
         axes[0].set_title("Unfiltered power spectrum (Welch)")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.canvas.draw()
+
 
 def plot_clean_psd(raw_obj, filtered=False, epoch_duration=6.0, sd_threshold=1.5):
     """
@@ -1583,6 +2020,7 @@ def plot_clean_psd(raw_obj, filtered=False, epoch_duration=6.0, sd_threshold=1.5
     print(
         f"PSD Plot: Rejected {len(bad_indices)} temporary epochs with PTP > {sd_threshold} SDs from mean."
     )
+
 
 def perform_temp_down_sampling(raw, config):
     """Downsample the temporary raw EEG.
@@ -1852,11 +2290,10 @@ while True:  # @noloop remove
         config = ask_beamformer_option(config)  # before file loop
         # list of patterns read from eeg_processing_config_XX
         config = ask_input_file_pattern(config, settings)
-
-        # sample frequency of bdf, eeg and edf are available in raw
-        if config["input_file_pattern"].find(".txt") >= 0:
-            config = ask_sample_frequency(config, settings)  # ask sample frequency
-            sample_frequency = config["sample_frequency"]  # check
+            
+        # Sample frequency is only needed for .txt imports (other formats have it in the file)
+        if is_txt_import(config["input_file_pattern"]):
+            config = ask_sample_frequency(config, settings)
 
         config = ask_downsample_factor(config, settings)
 
@@ -1871,15 +2308,15 @@ while True:  # @noloop remove
             # reset progress bars
             progress_bar_files.UpdateBar(0, 0)
             progress_bar_epochs.UpdateBar(0, 0)
-            no_montage_patterns = settings["no_montage_patterns"]
-            config["file_pattern"] = settings["input_file_pattern", config["input_file_pattern"]]
-
-            montage = None
-            if (
-                config["file_pattern"] not in no_montage_patterns
-                and settings["montage", config["input_file_pattern"]] != "MEG"
-            ):
-                montage = mne.channels.make_standard_montage(settings["montage", config["input_file_pattern"]])
+            
+            # Determine if this is a .txt import
+            config["is_txt_import"] = is_txt_import(config["input_file_pattern"])
+            
+            # Get the montage name from the user's selection
+            config["montage_name"] = get_montage_name_from_selection(config["input_file_pattern"])
+            
+            msg = f"Processing batch with montage setting: {config['montage_name']}"
+            window["-RUN_INFO-"].update(msg + "\n", append=True)
 
             # progess bar vars
             lfl = len(config["input_file_paths"])
@@ -1899,7 +2336,7 @@ while True:  # @noloop remove
                 window["-RUN_INFO-"].update(msg + "\n", append=True)
                 window["-FILE_INFO-"].update(msg + "\n", append=True)
 
-                raw, config = create_raw(config, montage, no_montage_patterns)
+                raw, config = create_raw(config)
                 
                 # Channel dropping – per-file
                 drop_key = (file_name, "drop")
