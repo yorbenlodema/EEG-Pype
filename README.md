@@ -65,11 +65,13 @@ Note: You only need to do steps 1 through 4 once.
    Miniconda is a tool that manages the Python coding language for us. [Miniconda Download link](https://www.anaconda.com/download/success).
    - Windows: Under "Windows" download the "Windows 64-Bit Graphical Installer". Open the file and click "Next" through the installation. Important: If asked, leave the default settings as they are.
    - macOS: If you have a newer Mac (M1-M5 chips): Under "Mac" and "Miniconda" download the 64-Bit (Apple silicon) Graphical Installer. If you have an older Mac (Intel chip): Under "Mac" and "Miniconda" download the 64-Bit (Intel chip) Graphical Installer.
+   - Linux: Install Miniconda by downloading the Linux installer from the same page.
 
 - Install Git:
    Git allows you to download the software from this website.
    - Windows: Download and install [Git for Windows](https://git-scm.com/download/win) ("Standalone Installer" then "x64" for most users unless you have an ARM-based CPU). During installation, you can keep clicking "Next" to accept all default settings.
    - macOS: Git is usually installed automatically on Mac computers. To check, you can skip this step for now; if you need it later, your Mac will prompt you to install it.
+   - Linux: Git is usually pre-installed. If not, run `sudo apt install git` (Ubuntu/Debian) or `sudo dnf install git` (Fedora).
 
 ### 2. Download the EEG-Pype Code
 - Open your command tool:
@@ -167,7 +169,7 @@ Next time you want to use the software, you only need to do this:
 3.	Type: cd EEG-Pype/src
 4.	Type: python eeg_processing_script.py
 
-For any issues, please feel free to open an issue on the [GitHub repository](https://github.com/snorben/EEG-Pype/issues).
+For any issues, please feel free to open an issue on the [GitHub repository](https://github.com/yorbenlodema/EEG-Pype/issues).
 
 ## Updating the Software
 
@@ -177,17 +179,17 @@ Open a terminal (or Anaconda Prompt on Windows) and navigate to your project dir
 ```bash
 cd path_to/EEG-Pype/src
 ```
-3. Activate the Conda Environment
+2. Activate the Conda Environment
 Ensure you're using the correct environment:
 ```bash
 conda activate EEG-Pype
 ```
-5. Pull the Latest Changes
+3. Pull the Latest Changes
 Fetch and merge the latest changes from the GitHub repository:
 ```bash
 git pull origin main
 ```
-7. Update Dependencies
+4. Update Dependencies
 If there are any changes to the dependencies, reinstall the package:
 ```bash
 python -m pip install . --upgrade
