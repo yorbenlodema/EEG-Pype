@@ -19,7 +19,7 @@ f_size = 5  # font size filter frequency inputs
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
 
-EEG_version = "v4.4.2"
+EEG_version = "v4.4.3"
 
 # script run defaults
 settings["default_epoch_length"] = 8
@@ -58,6 +58,9 @@ settings["batch_prefix"] = " "
 settings["header_rows"] = 1  # Skip ... header rows
 settings["channel_names_row"] = 0  # Channel names are in row ... +1 (0-based counting)
 # use channel_names_row = None if no header is present
+
+# ICLabel settings
+settings["use_icalabel"] = 0  # Default off, user can enable
 
 # .txt reading settings
 settings["txt_delimiter"] = "auto"  # Options: "auto", "tab", "comma", "semicolon", "space"
