@@ -14,6 +14,8 @@ import pandas as pd
 from mne.beamformer import apply_lcmv_raw, make_lcmv
 from mne.datasets import fetch_fsaverage
 from mne.preprocessing import ICA
+from mne_icalabel import label_components
+from mne_icalabel.iclabel import iclabel_label_components
 
 from eeg_processing_settings import (
     f_font,
@@ -29,7 +31,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.4.2"
+EEG_version = "v4.4.3"
 
 # initial values
 progress_value1 = 20
@@ -498,7 +500,7 @@ def ask_ica_option(config):
         [sg.Button("Yes"), sg.Button("No")],
         [sg.Push(background_color="white"), sg.Button("More info")],
     ]
-    window = sg.Window(
+    window_ica = sg.Window(
         "EEG processing input parameters",
         layout,
         font=font,
@@ -508,21 +510,78 @@ def ask_ica_option(config):
         location=(100, 100),
     )
     while True:
-        event, values = window.read()
+        event, values = window_ica.read()
         if event == "More info":
             wb.open_new_tab(url)
             continue
         if event == "Yes":
             config["apply_ica"] = 1
             config = ask_nr_ica_components(config, settings)
+            # NEW: Ask about ICLabel assistance
+            config = ask_icalabel_option(config)
             break
         if event == "No":
             config["apply_ica"] = 0
+            config["use_icalabel"] = 0
             break
-        if event in (sg.WIN_CLOSED, "Ok"):
+        if event in (sg.WIN_CLOSED,):
+            config["apply_ica"] = 0
+            config["use_icalabel"] = 0
             break
-    window.close()
+    window_ica.close()
 
+    return config
+
+
+def ask_icalabel_option(config):
+    """Ask if user wants ICLabel assistance for ICA component classification.
+    
+    ICLabel uses a neural network to predict whether each ICA component
+    represents brain activity or an artifact (muscle, eye, heart, etc.).
+    """
+    
+    txt = (
+        "Do you want to use ICLabel to help identify artifact components?\n\n"
+        "ICLabel is an AI-based tool that predicts whether each component is:\n"
+        "• Brain activity\n"
+        "• Eye movement/blink artifact\n"
+        "• Muscle artifact\n"
+        "• Heart artifact\n"
+        "• Line noise\n"
+        "• Channel noise\n\n"
+        "Recommended for users less experienced with ICA interpretation."
+    )
+    url = "https://mne.tools/mne-icalabel/stable/index.html"
+    
+    layout = [
+        [sg.Text(txt, background_color="white")],
+        [sg.Button("Yes"), sg.Button("No")],
+        [sg.Push(background_color="white"), sg.Button("More info")],
+    ]
+    
+    window_icalabel = sg.Window(
+        "ICLabel Component Classification",
+        layout,
+        modal=True,
+        use_custom_titlebar=True,
+        font=font,
+        background_color="white",
+        location=(100, 100),
+    )
+    
+    while True:
+        event, values = window_icalabel.read()
+        if event == "More info":
+            wb.open_new_tab(url)
+            continue
+        if event == "Yes":
+            config["use_icalabel"] = 1
+            break
+        if event in (sg.WIN_CLOSED, "No"):
+            config["use_icalabel"] = 0
+            break
+    
+    window_icalabel.close()
     return config
 
 
@@ -589,8 +648,7 @@ def ask_epoch_selection(config):
                 continue
             if event == "Yes":
                 config["apply_epoch_selection"] = 1
-                if config["rerun"] == 1:
-                    rerun_no_previous_epoch_selection = 1
+
                 config = ask_epoch_length(config, settings)  # ask epoch length
                 break
             if event == "No":
@@ -897,20 +955,59 @@ def get_expected_channels(montage_name):
 
 
 def show_channel_correction_window(raw, montage_name):
-    """Show a window for correcting channel names to match the selected montage."""
+    """Show a window for correcting channel names to match the selected montage.
+    
+    Features:
+    - Search and replace functionality
+    - Reset to original channel names
+    - Undo last change
+    - Duplicate channel name detection
+    - Visual feedback on matching status
+    
+    Args:
+        raw: MNE Raw object
+        montage_name: Name of the target montage
+        
+    Returns:
+        list: Modified channel names, or None if cancelled
+    """
     # Get expected channel names for the selected montage
     expected_channels = get_expected_channels(montage_name)
-    current_channels = raw.ch_names
+    current_channels = list(raw.ch_names)  # Make a copy of original names
+    original_channels = list(raw.ch_names)  # Keep original for reset
+    
+    # History stack for undo functionality
+    history_stack = []
 
-    def find_best_match(channel, expected_set):
-        """Find the best matching expected channel name."""
-        if channel in expected_set:
-            return channel
-        # Add more sophisticated matching logic here if needed
-        return ""
+    def find_duplicates(channel_list):
+        """Find duplicate channel names in the list.
+        
+        Args:
+            channel_list: List of channel names to check
+            
+        Returns:
+            list: List of channel names that appear more than once
+        """
+        seen = {}
+        duplicates = []
+        for idx, ch in enumerate(channel_list):
+            if ch in seen:
+                if ch not in duplicates:
+                    duplicates.append(ch)
+            else:
+                seen[ch] = idx
+        return duplicates
 
     def create_table_data(current, expected):
-        """Create table data with matched channels aligned."""
+        """Create table data with matched channels aligned.
+        
+        Args:
+            current: List of current channel names
+            expected: List of expected channel names from montage
+            
+        Returns:
+            list: Table data as list of [current, expected] pairs
+        """
         expected_set = set(expected)
 
         # First, handle exact matches
@@ -933,7 +1030,9 @@ def show_channel_correction_window(raw, montage_name):
         return matched_pairs + [[curr, ""] for curr in unmatched_current] + [["", exp] for exp in remaining_expected]
 
     def update_table_and_status():
-        """Update the table and matching status."""
+        """Update the table display and status information."""
+        nonlocal modified_channels
+        
         table_data = create_table_data(modified_channels, expected_channels)
         window["-CHANNEL_TABLE-"].update(table_data)
 
@@ -944,13 +1043,30 @@ def show_channel_correction_window(raw, montage_name):
 
         # Add warnings about mismatches
         warnings = []
+        
+        # Check for duplicates first (critical error)
+        duplicates = find_duplicates(modified_channels)
+        if duplicates:
+            warnings.append(f"⚠️ DUPLICATE NAMES FOUND: {', '.join(duplicates)}")
+            window["-DUPLICATE_WARNING-"].update(
+                f"Cannot apply: Duplicate channel names detected!\nDuplicates: {', '.join(duplicates)}",
+                text_color="red"
+            )
+            window["-APPLY-"].update(disabled=True)
+        else:
+            window["-DUPLICATE_WARNING-"].update("")
+            window["-APPLY-"].update(disabled=False)
+        
+        # Channel count mismatch warning
         if (n_mod := len(modified_channels)) != (n_exp := len(expected_channels)):
             warnings.append(f"Number of channels doesn't match! Current: {n_mod}, Expected: {n_exp}")
 
+        # Extra channels warning
         extra_channels = set(modified_channels) - set(expected_channels)
         if extra_channels:
             warnings.append(f"Extra channels found: {', '.join(sorted(extra_channels))}")
 
+        # Missing channels warning
         missing_channels = set(expected_channels) - set(modified_channels)
         if missing_channels:
             warnings.append(f"Missing expected channels: {', '.join(sorted(missing_channels))}")
@@ -959,11 +1075,26 @@ def show_channel_correction_window(raw, montage_name):
             status += "\n" + "\n".join(warnings)
 
         window["-MATCH_STATUS-"].update(status)
+        
+        # Update undo button state
+        window["-UNDO-"].update(disabled=len(history_stack) == 0)
+        
+        # Update reset button state (disabled if no changes made)
+        has_changes = modified_channels != original_channels
+        window["-RESET-"].update(disabled=not has_changes)
+
+    def save_to_history():
+        """Save current state to history for undo functionality."""
+        history_stack.append(list(modified_channels))
+        # Limit history size to prevent memory issues
+        if len(history_stack) > 50:
+            history_stack.pop(0)
 
     # Create layout for the correction window
     layout = [
         [sg.Text("Channel Name Correction", font=("Default", 16, "bold"))],
-
+        
+        # Search and Replace frame
         [
             sg.Frame(
                 "Search and Replace",
@@ -978,6 +1109,20 @@ def show_channel_correction_window(raw, montage_name):
                 ],
             )
         ],
+        
+        # Edit Controls frame with Undo and Reset buttons
+        [
+            sg.Frame(
+                "Edit Controls",
+                [
+                    [
+                        sg.Button("↩ Undo Last Change", key="-UNDO-", disabled=True),
+                        sg.Button("🔄 Reset to Original", key="-RESET-", disabled=True),
+                    ]
+                ],
+            )
+        ],
+        
         # Channel comparison table
         [
             sg.Table(
@@ -991,17 +1136,30 @@ def show_channel_correction_window(raw, montage_name):
                 vertical_scroll_only=False,
             )
         ],
+        
+        # Duplicate warning (shown in red when duplicates exist)
+        [sg.Text("", key="-DUPLICATE_WARNING-", font=("Default", 11, "bold"), text_color="red")],
+        
         # Status of matches
         [sg.Text("", key="-MATCH_STATUS-", font=("Default", 12))],
+        
+        # Action buttons
         [
             sg.Button("Apply to file", key="-APPLY-", button_color=("white", "#2196F3")),
             sg.Button("Cancel", key="-CANCEL-"),
         ],
     ]
 
-    window = sg.Window("Channel Name Correction", layout, modal=True, finalize=True, resizable=True)
+    window = sg.Window(
+        "Channel Name Correction", 
+        layout, 
+        modal=True, 
+        finalize=True, 
+        resizable=True,
+        font=font
+    )
 
-    modified_channels = current_channels.copy()
+    modified_channels = list(current_channels)
     update_table_and_status()
 
     while True:
@@ -1015,14 +1173,64 @@ def show_channel_correction_window(raw, montage_name):
             find = values["-FIND-"]
             replace = values["-REPLACE-"]
             if find:  # Only replace if find string is not empty
-                modified_channels = [ch.replace(find, replace) for ch in modified_channels]
+                # Check if any changes would be made
+                new_channels = [ch.replace(find, replace) for ch in modified_channels]
+                if new_channels != modified_channels:
+                    save_to_history()
+                    modified_channels = new_channels
+                    update_table_and_status()
+                else:
+                    sg.popup_ok(
+                        f"No matches found for '{find}'",
+                        title="No Changes",
+                        font=font
+                    )
+
+        elif event == "-UNDO-":
+            if history_stack:
+                modified_channels = history_stack.pop()
                 update_table_and_status()
 
+        elif event == "-RESET-":
+            # Confirm reset if there are changes
+            if modified_channels != original_channels:
+                confirm = sg.popup_yes_no(
+                    "Are you sure you want to reset all channel names to their original values?\n\n"
+                    "This will discard all changes made in this session.",
+                    title="Confirm Reset",
+                    font=font
+                )
+                if confirm == "Yes":
+                    save_to_history()  # Save current state so user can undo the reset
+                    modified_channels = list(original_channels)
+                    update_table_and_status()
+
         elif event == "-APPLY-":
-            if len(modified_channels) != len(expected_channels) and not sg.popup_yes_no(
-                "Warning: Number of channels doesn't match the expected montage. Continue anyway?"
-            ):
+            # Final duplicate check before applying
+            duplicates = find_duplicates(modified_channels)
+            if duplicates:
+                sg.popup_error(
+                    f"Cannot apply changes!\n\n"
+                    f"Duplicate channel names found: {', '.join(duplicates)}\n\n"
+                    "Please fix the duplicates before applying.",
+                    title="Duplicate Channel Names",
+                    font=font
+                )
                 continue
+            
+            # Warning about channel count mismatch
+            if len(modified_channels) != len(expected_channels):
+                confirm = sg.popup_yes_no(
+                    "Warning: Number of channels doesn't match the expected montage.\n\n"
+                    f"Current: {len(modified_channels)} channels\n"
+                    f"Expected: {len(expected_channels)} channels\n\n"
+                    "Continue anyway?",
+                    title="Channel Count Mismatch",
+                    font=font
+                )
+                if confirm != "Yes":
+                    continue
+            
             window.close()
             return modified_channels
 
@@ -1862,7 +2070,11 @@ def update_channels_to_be_dropped(raw, config, file_name):
 
 
 def perform_ica(raw, raw_temp, config):
-    """Perform ICA on data with bad channels marked but not dropped."""
+    """Perform ICA on data with bad channels marked but not dropped.
+    
+    If ICLabel is enabled, runs component classification and displays
+    predictions alongside the ICA plots for cross-referencing.
+    """
     msg = "Max # components = " + str(config["max_channels"])
     window["-RUN_INFO-"].update(msg + "\n", append=True)
 
@@ -1875,11 +2087,66 @@ def perform_ica(raw, raw_temp, config):
 
     # Fit ICA excluding bad channels but without dropping them
     ica = ICA(n_components=config["nr_ica_components"], method="fastica")
-    # Ignores bad channels during fitting
     ica.fit(raw_ica, picks="eeg")
 
-    ica.plot_components()  # head plot heat map
-    ica.plot_sources(raw_ica, block=True)
+    # Run ICLabel if enabled - do this BEFORE plotting so we can show results alongside
+    ic_labels = None
+    flagged_components = []
+    window_icalabel = None  # Track the ICLabel window for cleanup
+    
+    if config.get("use_icalabel", 0):
+        ic_labels, flagged_components = perform_icalabel_classification(raw_ica, ica, config)
+        
+        # Store labels in ICA object for plotting (MNE-ICALabel integration)
+        ica.labels_ = {label: [] for label in ["brain", "muscle", "eye", "heart", "line_noise", "channel_noise", "other"]}
+        for i, label in enumerate(ic_labels["labels"]):
+            ica.labels_[label].append(i)
+    
+    # Plot components (topomap) - NON-BLOCKING
+    fig_topo = ica.plot_components(show=False)
+    if isinstance(fig_topo, list):
+        for fig in fig_topo:
+            fig.show()
+    else:
+        fig_topo.show()
+    
+    # Plot sources (time series) - NON-BLOCKING initially
+    fig_sources = ica.plot_sources(raw_ica, block=False, show=True)
+    
+    # If ICLabel is enabled, show the results window now (all 3 windows visible together)
+    if config.get("use_icalabel", 0) and ic_labels is not None:
+        # Display ICLabel results in a popup - user can cross-reference with the plots
+        window_icalabel = display_icalabel_results_window_concurrent(
+            ic_labels, 
+            ica,
+            flagged_components
+        )
+    
+    # Now block on the sources plot for final component selection
+    # User closes this window when done selecting components to exclude
+    import matplotlib.pyplot as plt
+    msg = "Select components to exclude by clicking on them in the time series plot.\nClose the time series window when done."
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    # Show a small instruction popup
+    sg.popup_ok(
+        "All ICA windows are now open:\n\n"
+        "1. Component Topomaps - spatial patterns\n"
+        "2. Component Time Series - temporal patterns\n"
+        + ("3. ICLabel Results - AI predictions\n\n" if config.get("use_icalabel", 0) else "\n")
+        + "Click on components in the TIME SERIES plot to mark them for exclusion.\n"
+        "Close the TIME SERIES window when you're done selecting.",
+        title="ICA Component Selection",
+        font=font,
+        location=(100, 100),
+    )
+    
+    # Block until user closes the sources figure
+    plt.show(block=True)
+    
+    # Clean up the ICLabel window after user is done
+    if window_icalabel is not None:
+        window_icalabel.close()
 
     # Calculate and display explained variance
     pca_explained_variances = ica.pca_explained_variance_ / ica.pca_explained_variance_.sum()
@@ -1895,8 +2162,234 @@ def perform_ica(raw, raw_temp, config):
     # Apply ICA to the temporary raw object
     raw_temp.info["bads"] = config[file_name, "bad"]
     ica.apply(raw_temp)
+    
+    # Log ICLabel results if used
+    if ic_labels is not None:
+        excluded_components = list(ica.exclude)
+        log_text = format_icalabel_for_log(ica, ic_labels, excluded_components)
+        window["-RUN_INFO-"].update(log_text + "\n", append=True)
+        
+        # Store in config for later reference
+        config[file_name, "icalabel_results"] = {
+            "labels": ic_labels["labels"],
+            "probabilities": ic_labels["y_pred_proba"].tolist(),
+            "excluded_components": excluded_components,
+        }
 
     return raw_temp, ica, config
+
+
+def perform_icalabel_classification(raw_ica, ica, config):
+    """Run ICLabel classification on ICA components.
+    
+    Args:
+        raw_ica: The filtered raw object used for ICA fitting
+        ica: The fitted ICA object
+        config: Configuration dictionary
+        
+    Returns:
+        tuple: (ic_labels dict, list of flagged component indices)
+    """
+    msg = "Running ICLabel component classification..."
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    # ICLabel class names (fixed order by the ICLabel model)
+    class_names = ["brain", "muscle", "eye", "heart", "line_noise", "channel_noise", "other"]
+    
+    # Categories that are typically artifacts (for flagging)
+    artifact_categories = {"muscle", "eye", "heart", "line_noise", "channel_noise"}
+    
+    # Use iclabel_label_components directly to get the full probability matrix
+    labels_pred_proba = iclabel_label_components(raw_ica, ica, inplace=False)
+    
+    # Ensure it's a numpy array and 2D
+    labels_pred_proba = np.array(labels_pred_proba)
+    if labels_pred_proba.ndim == 1:
+        labels_pred_proba = labels_pred_proba[np.newaxis, :]
+        
+    # Get the predicted labels (argmax of probabilities)
+    labels_pred_idx = np.argmax(labels_pred_proba, axis=1)
+    component_labels = [class_names[idx] for idx in labels_pred_idx]
+    
+    # Create ic_labels dictionary
+    ic_labels = {
+        "labels": component_labels,
+        "y_pred_proba": labels_pred_proba
+    }
+    
+    # Identify flagged components
+    flagged_components = [
+        i for i, label in enumerate(component_labels) 
+        if label in artifact_categories
+    ]
+    
+    msg = f"ICLabel classification complete. {len(flagged_components)} components flagged as potential artifacts."
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    return ic_labels, flagged_components
+
+
+def display_icalabel_results_window_concurrent(ic_labels, ica, flagged_components):
+    """Display ICLabel results in a non-modal window for concurrent viewing with ICA plots.
+    
+    Args:
+        ic_labels: Dictionary with 'labels' and 'y_pred_proba'
+        ica: The ICA object
+        flagged_components: List of component indices flagged as artifacts
+    """
+    class_names = ["brain", "muscle", "eye", "heart", "line_noise", "channel_noise", "other"]
+    artifact_categories = {"muscle", "eye", "heart", "line_noise", "channel_noise"}
+    
+    component_labels = ic_labels["labels"]
+    pred_proba = np.array(ic_labels["y_pred_proba"])
+    n_components = len(component_labels)
+    
+    # Build results text
+    results_text = "ICLabel Component Classification Results\n"
+    results_text += "=" * 55 + "\n\n"
+    results_text += "⚠️ = Predicted artifact (review carefully!)\n"
+    results_text += "-" * 55 + "\n"
+    
+    for ic_idx in range(n_components):
+        label = component_labels[ic_idx]
+        probs = pred_proba[ic_idx]
+        
+        label_idx = class_names.index(label)
+        confidence = probs[label_idx] * 100
+        
+        is_artifact = label in artifact_categories
+        flag = "⚠️ " if is_artifact else "   "
+        
+        results_text += f"{flag}IC {ic_idx:2d}: {label:12s} ({confidence:5.1f}%)"
+        
+        # Show top 2 alternatives if confidence < 90%
+        if confidence < 90:
+            sorted_indices = np.argsort(probs)[::-1][1:3]  # Skip the top one
+            alts = [f"{class_names[i]}:{probs[i]*100:.0f}%" for i in sorted_indices if probs[i] > 0.05]
+            if alts:
+                results_text += f"  [{', '.join(alts)}]"
+        results_text += "\n"
+    
+    results_text += "-" * 55 + "\n"
+    results_text += f"Total: {n_components} | Flagged: {len(flagged_components)}\n"
+    if flagged_components:
+        results_text += f"Flagged ICs: {flagged_components}\n"
+    
+    layout = [
+        [sg.Text("ICLabel Predictions", font=("Default", 14, "bold"), background_color="white")],
+        [
+            sg.Multiline(
+                results_text,
+                size=(50, min(n_components + 10, 25)),
+                font=("Courier New", 10),
+                disabled=True,
+                background_color="#FFFEF0",
+                text_color="black",
+                key="-ICALABEL_RESULTS-",
+            )
+        ],
+        [
+            sg.Text(
+                "Cross-reference with topomap and time series plots.\n"
+                "Click components in TIME SERIES to exclude them.",
+                background_color="white",
+                font=("Default", 10, "italic"),
+            )
+        ],
+    ]
+    
+    # Create a NON-MODAL window (modal=False) so it stays open alongside plots
+    window_icalabel = sg.Window(
+        "ICLabel Results",
+        layout,
+        modal=False,  # KEY: non-modal allows other windows to be interactive
+        use_custom_titlebar=True,
+        font=font,
+        background_color="white",
+        location=(50, 50),  # Position in top-left
+        finalize=True,
+        keep_on_top=False,  # Don't force on top, let user arrange windows
+    )
+    
+    # Don't block - just return. The window stays open.
+    # It will be closed when the user closes matplotlib figures or the main app
+    return window_icalabel
+
+
+def format_icalabel_for_log(ica, ic_labels, excluded_components):
+    """Format ICLabel results for logging.
+    
+    Args:
+        ica: The ICA object (to get excluded components)
+        ic_labels: ICLabel results dictionary
+        excluded_components: List of component indices that were excluded
+        
+    Returns:
+        str: Formatted string for log file
+    """
+    component_labels = ic_labels["labels"]
+    pred_proba = np.array(ic_labels["y_pred_proba"])
+    
+    # Ensure 2D
+    if pred_proba.ndim == 1:
+        n_components = len(component_labels)
+        log_text = "\n" + "=" * 60 + "\n"
+        log_text += "ICLabel Classification Results\n"
+        log_text += "=" * 60 + "\n\n"
+        log_text += "Note: Only winning class probabilities available\n\n"
+        
+        for ic_idx in range(n_components):
+            label = component_labels[ic_idx]
+            excluded_marker = " [EXCLUDED]" if ic_idx in excluded_components else ""
+            log_text += f"IC {ic_idx:2d}: {label:12s}{excluded_marker}\n"
+        
+        log_text += "\n" + "-" * 40 + "\n"
+        log_text += f"Total components: {n_components}\n"
+        log_text += f"Excluded components: {sorted(excluded_components)}\n"
+        log_text += "=" * 60 + "\n"
+        return log_text
+    
+    class_names = ["brain", "muscle", "eye", "heart", "line_noise", "channel_noise", "other"]
+    n_components = len(component_labels)
+    
+    log_text = "\n" + "=" * 60 + "\n"
+    log_text += "ICLabel Classification Results\n"
+    log_text += "=" * 60 + "\n\n"
+    
+    log_text += "All Components:\n"
+    log_text += "-" * 40 + "\n"
+    
+    for ic_idx in range(n_components):
+        label = component_labels[ic_idx]
+        probs = pred_proba[ic_idx]
+        
+        # Get confidence for the predicted label
+        label_idx = class_names.index(label)
+        confidence = probs[label_idx] * 100
+        
+        excluded_marker = " [EXCLUDED]" if ic_idx in excluded_components else ""
+        log_text += f"IC {ic_idx:2d}: {label:12s} ({confidence:5.1f}%){excluded_marker}\n"
+        
+        # Add detailed probabilities
+        log_text += "        Probabilities: "
+        prob_details = [f"{class_names[j]}={probs[j]*100:.1f}%" for j in range(len(class_names))]
+        log_text += ", ".join(prob_details) + "\n"
+    
+    log_text += "\n" + "-" * 40 + "\n"
+    log_text += f"Total components: {n_components}\n"
+    log_text += f"Excluded components: {sorted(excluded_components)}\n"
+    
+    # Summarize excluded by category
+    if excluded_components:
+        log_text += "\nExcluded components by predicted category:\n"
+        for cat in class_names:
+            excluded_in_cat = [ic_idx for ic_idx in excluded_components if component_labels[ic_idx] == cat]
+            if excluded_in_cat:
+                log_text += f"  {cat}: {excluded_in_cat}\n"
+    
+    log_text += "=" * 60 + "\n"
+    
+    return log_text
 
 
 def perform_bad_channels_selection(raw, config):
@@ -2400,12 +2893,17 @@ while True:  # @noloop remove
 
                 # Mark bad channels but don't interpolate yet
                 raw.info["bads"] = config[file_name, "bad"]
-
+                    
                 # Apply ICA before interpolation if requested
                 if config["apply_ica"]:
                     ica.apply(raw)  # ICA will automatically exclude bad channels
                     msg = "ICA applied to output signal"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
+                    
+                    # Log excluded components
+                    if ica.exclude:
+                        msg = f"Excluded ICA components: {sorted(ica.exclude)}"
+                        window["-RUN_INFO-"].update(msg + "\n", append=True)
 
                 # Now interpolate bad channels after ICA
                 raw.interpolate_bads(reset_bads=True)

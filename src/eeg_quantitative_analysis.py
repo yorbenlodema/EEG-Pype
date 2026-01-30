@@ -26,7 +26,7 @@ from scipy.sparse.csgraph import minimum_spanning_tree
 PySimpleGUI_License = "ePycJVMLaeW5NflzbNn9NLlOVFHzl7w4ZaSLIk6MIYkvRWpncB3ORHyiauWyJB1gdyGQlPvXbgi7IAswIIk3xnpjYF2QVPuccn2aVNJdRhCnI96RMUTtcdzOMYzIM05eNLjWQjyxMQi8wGirTkGxl2jUZcWc5YzYZOUyRXllcQGExvvFeDWz1jlVbVnEROW3ZzXIJGzUalWp9huwImjmojivNhSr4Ew9ItiOwHikTXmpFxthZIUrZ8pfcCnFNQ0iIJjyokihWeWm95yfYymHVJu2I4iqwxi5T9mAFatLZaUkxphHcv3DQRi3OcipJZMBbN2ZR6lvbeWEEkiuL7CfJSDIbt2n1mwBY8WY555qIsj8oriYISiJwNiwQq3GVvzEdaGL9VtyZMXbJgJIRnCrI06II1jCQNxDNSj8YEyPICiNwyiaR1GVFw0VZOUeltz1cW3EVFlUZcC3IG6nIUj3ICwjM3jQQ6tWMUT5IAtLMADTUdi8L1ClJQERYEXfRelmR0XBhDwTa5XyJalIcXyoIX6aIvj3ICwSM3jcYrtcMYT2AFtgMMDTkNiNL4CtJKFIbDWmFQpNbUEFFckFZeHrJVlRcY3DM9isOmicJ258bD3qJjiKZVWp5Psab62lRPllb7WbFQAbcOHtJsv6dUGm9EueLXmv1ylIIliowFiAShVhBZBwZuGnRVyXZrXMNdzTI9j7osioM5T8QxztLBjCEoyPMvSI4XySMRzxk3umMeT5MeisfZQJ=c=02504c6fb7ca09721d288ae69f8237c96a99697e5b723e543938c4be810e2615f6fa037769c1edbd61ae40a244556b95fdfc2843df8e3807e955bc2c1d4be04c7022e2aa84c8eef696a9c6a61297e79cc4f465fb5e94513820c17814b2d35afadfa00653a9157afbad05ce088b890ca447c12c1df95d67e61ceed0b57d99ee7f26bfca445ad111393dab2dd1b6bee992510a1e973d0c6fae38f654816cc8de05ce7a79081d2029d636be38fb06ff7c68bfa0bdf080c7bb349a71ec74894e9f746bcbe58a67482485609109ec0a416582fc50f3500f55d5a021e7ea0ce4aafa6a207c77b80c2b48484e70314ef2b1a14970f110336f4c68eed12b49b4f3560b9e48eca892473d97b6ccb712cd086b0baa6aef3aa59be23f951a3476fbc5824402af301b988f410cf050f722fa3f2995ae68d4852645384eccec7841c10fe44b08102cc32a6d94a5854d0a148cecf8d25a51067db2e71842845dd715141ca15f1a5dd475bf4cba5afb23e794e77a53b89590ea0a37e638d46c73c869f4957c4a445d813a94167f3aaca7b58ce66ccb0c605e4820cc661c3d2ae832e41ee9fd46357fb40d26e103d4d747794f8548c27c363e096d495269740a6c08e5f936aec6c689a5a18694b24c37268c9c18760d063ad62b96d505b01074f81d7bb94d456c0d2bca0dd8b96b2246167bb1d0ce36a44a4ec051d22a72260ebbf910b375e511158"  # noqa: E501
 import PySimpleGUI as sg
 
-EEG_version = "v4.4.2"
+EEG_version = "v4.4.3"
 
 logger = logging.getLogger(__name__)
 
@@ -143,17 +143,19 @@ def setup_logging(folder_path):
 
 
 def create_gui():
-    """Create the GUI layout for EEG analysis settings."""
+    """Create the GUI layout for EEG analysis settings (Pipeline Layout)."""
     suggested_threads = DEFAULT_THREADS
 
     HEADER_BG = "#2C5784"
     HEADER_TEXT = "#FFFFFF"
     MAIN_BG = "#F0F2F6"
     BUTTON_COLOR = ("#FFFFFF", "#2C5784")
+    STEP_TEXT_COLOR = "#505050"
 
     sg.theme("Default1")
     sg.set_options(font=("Helvetica", 10))
 
+    # --- Header ---
     header = [
         [
             sg.Text(
@@ -175,8 +177,9 @@ def create_gui():
         ],
     ]
 
-    # Column 1: Input Settings and Matrix Export
-    left_column = [
+    # --- Step 1: Setup (Inputs & Epochs) ---
+    step_1_layout = [
+        [sg.Text("Step 1: Setup", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],
         [
             sg.Frame(
                 "Input Settings",
@@ -197,7 +200,7 @@ def create_gui():
                         )
                     ],
                 ],
-                background_color=MAIN_BG,
+                background_color=MAIN_BG, expand_x=True
             )
         ],
         [
@@ -218,43 +221,112 @@ def create_gui():
                         sg.Input("42", key="-SEED-", size=(5, 1)),
                     ],
                 ],
-                background_color=MAIN_BG,
-            )
-        ],
-        [
-            sg.Frame(
-                "Matrix Export",
-                [
-                    [
-                        sg.Checkbox(
-                            "Save connectivity matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [
-                        sg.Text("Matrix folder:", background_color=MAIN_BG),
-                        sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(15, 1)),
-                    ],
-                    [sg.Checkbox("Save MST matrices", key="-SAVE_MST-", default=False, background_color=MAIN_BG)],
-                    [
-                        sg.Text("MST folder:", background_color=MAIN_BG),
-                        sg.Input("mst_matrices", key="-MST_FOLDER-", size=(15, 1)),
-                    ],
-                    [
-                        sg.Checkbox(
-                            "Save channel-level averages",
-                            key="-SAVE_CHANNEL_AVERAGES-",
-                            default=False,
-                            background_color=MAIN_BG,
-                        )
-                    ],
-                ],
-                background_color=MAIN_BG,
+                background_color=MAIN_BG, expand_x=True
             )
         ],
     ]
 
-    # Column 2: Complexity Measures
-    middle_column = [
+    # --- Step 2: Analysis Configuration ---
+    step_2_layout = [
+        [sg.Text("Step 2: Analysis", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],
+        [
+            sg.Frame(
+                "Spectral Analysis",
+                [
+                    [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
+                    [
+                        sg.Text("PSD Method:", background_color=MAIN_BG),
+                        sg.Combo(
+                            ["Multitaper", "Welch", "FFT"], default_value="Multitaper", key="-PSD_METHOD-", size=(10, 1)
+                        ),
+                    ],
+                    [
+                        sg.Text(
+                            "Welch parameters (if selected):",
+                            background_color=MAIN_BG,
+                            font=("Helvetica", 9, "italic"),
+                        )
+                    ],
+                    [
+                        sg.Text("Window (ms):", background_color=MAIN_BG),
+                        sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1)),
+                        sg.Text("Overlap %:", background_color=MAIN_BG),
+                        sg.Input("50", key="-WELCH_OVERLAP-", size=(4, 1)),
+                    ],
+                    [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
+                    [
+                        sg.Checkbox(
+                            "Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [
+                        sg.Text("Freq range:", background_color=MAIN_BG),
+                        sg.Input("4", key="-PEAK_MIN-", size=(3, 1)),
+                        sg.Text("-", background_color=MAIN_BG),
+                        sg.Input("13", key="-PEAK_MAX-", size=(3, 1)),
+                    ],
+                    [
+                        sg.Checkbox(
+                            "Calc. spectral variability", key="-CALC_SV-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [
+                        sg.Text("Window (ms):", background_color=MAIN_BG),
+                        sg.Input("2000", key="-SV_WINDOW-", size=(6, 1)),
+                    ],
+                ],
+                background_color=MAIN_BG, expand_x=True
+            )
+        ],
+        [
+            sg.Frame(
+                "Connectivity",
+                [
+                    [sg.Checkbox("Calculate PLI", key="-CALC_PLI-", default=False, background_color=MAIN_BG)],
+                    [
+                        sg.Checkbox(
+                            "Calc. PLI MST measures", key="-CALC_PLI_MST-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [sg.Checkbox("Calculate PLT", key="-CALC_PLT-", default=False, background_color=MAIN_BG)],
+                    [
+                         sg.Text("PLT Threshold (ms):", background_color=MAIN_BG),
+                         sg.Input("30", key="-PLT_THRESH-", size=(4, 1)),
+                    ],
+                    [sg.Checkbox("Calculate AEC", key="-CALC_AEC-", default=False, background_color=MAIN_BG)],
+                    [
+                        sg.Checkbox(
+                            "Use orthogonalization (AECc)", key="-USE_AECC-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [
+                        sg.Checkbox(
+                            "Concatenate for AEC(c)",
+                            key="-CONCAT_AECC-",
+                            default=False,
+                            background_color=MAIN_BG,
+                        )
+                    ],
+                    [
+                        sg.Checkbox(
+                            "Calc. AEC(c) MST measures",
+                            key="-CALC_AEC_MST-",
+                            default=False,
+                            background_color=MAIN_BG,
+                        )
+                    ],
+                    [
+                        sg.Checkbox(
+                            "AEC force positive",
+                            key="-AEC_FORCE_POSITIVE-",
+                            default=True,
+                            background_color=MAIN_BG,
+                        )
+                    ],
+                ],
+                background_color=MAIN_BG, expand_x=True
+            )
+        ],
         [
             sg.Frame(
                 "Complexity Measures",
@@ -275,7 +347,7 @@ def create_gui():
                     [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-SAMPEN_M-", size=(3, 1))],
                     [
                         sg.Checkbox(
-                            "Calculate Approximate Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
+                            "Calculate Approx. Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
                         )
                     ],
                     [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-APEN_M-", size=(3, 1))],
@@ -284,185 +356,102 @@ def create_gui():
                         sg.Input("0.25", key="-APEN_R-", size=(3, 1)),
                     ],
                 ],
-                background_color=MAIN_BG,
+                background_color=MAIN_BG, expand_x=True
             )
         ],
     ]
 
-    # Column 3: Spectral Analysis and Connectivity
-    right_column = [
+    # --- Step 3: Output & Execution ---
+    step_3_layout = [
+        [sg.Text("Step 3: Output & Run", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],
         [
             sg.Frame(
-                "Spectral Analysis",
+                "Matrix Export",
                 [
-                    [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
                     [
-                        sg.Text("PSD Method:", background_color=MAIN_BG),
-                        sg.Combo(
-                            ["Multitaper", "Welch", "FFT"], default_value="Multitaper", key="-PSD_METHOD-", size=(10, 1)
+                        sg.Checkbox(
+                            "Save conn. matrices", key="-SAVE_MATRICES-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [
+                        sg.Text("Matrix folder:", background_color=MAIN_BG),
+                        # Increased size from 15 to 25 to force column width wider
+                        sg.Input("connectivity_matrices", key="-MATRIX_FOLDER-", size=(25, 1)),
+                    ],
+                    [sg.Checkbox("Save MST matrices", key="-SAVE_MST-", default=False, background_color=MAIN_BG)],
+                    [
+                        sg.Text("MST folder:", background_color=MAIN_BG),
+                        # Increased size from 15 to 25
+                        sg.Input("mst_matrices", key="-MST_FOLDER-", size=(25, 1)),
+                    ],
+                    [
+                        sg.Checkbox(
+                            "Save channel-level averages",
+                            key="-SAVE_CHANNEL_AVERAGES-",
+                            default=False,
+                            background_color=MAIN_BG,
+                        )
+                    ],
+                ],
+                background_color=MAIN_BG, expand_x=True
+            )
+        ],
+        [
+            sg.Frame(
+                "Progress & Execution",
+                [
+                    [
+                        sg.Button(
+                            "Process",
+                            size=(12, 1),
+                            button_color=BUTTON_COLOR,
+                            font=("Helvetica", 12, "bold"),
+                            bind_return_key=True
                         ),
-                    ],
-                    [
-                        sg.Text(
-                            "Welch parameters (only used if Welch method selected):",
-                            background_color=MAIN_BG,
-                            font=("Helvetica", 9, "italic"),
+                        sg.Button(
+                            "Exit",
+                            size=(8, 1),
+                            button_color=(HEADER_TEXT, "#AB4F4F"),
+                            font=("Helvetica", 12),
                         )
                     ],
-                    [
-                        sg.Text("Welch window (ms):", background_color=MAIN_BG),
-                        sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1)),
-                    ],
-                    [
-                        sg.Text("Welch overlap (%):", background_color=MAIN_BG),
-                        sg.Input("50", key="-WELCH_OVERLAP-", size=(6, 1)),
-                    ],
-                    [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
-                    [
-                        sg.Checkbox(
-                            "Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [
-                        sg.Text("Freq range:", background_color=MAIN_BG),
-                        sg.Input("4", key="-PEAK_MIN-", size=(4, 1)),
-                        sg.Text("-", background_color=MAIN_BG),
-                        sg.Input("13", key="-PEAK_MAX-", size=(4, 1)),
-                    ],
-                    [
-                        sg.Checkbox(
-                            "Calculate spectral variability", key="-CALC_SV-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [
-                        sg.Text("Window (ms):", background_color=MAIN_BG),
-                        sg.Input("2000", key="-SV_WINDOW-", size=(6, 1)),
-                    ],
-                ],
-                background_color=MAIN_BG,
-            )
-        ],
-        [
-            sg.Frame(
-                "Connectivity",
-                [
-                    [sg.Checkbox("Calculate PLI", key="-CALC_PLI-", default=False, background_color=MAIN_BG)],
-                    [
-                        sg.Checkbox(
-                            "Calculate PLI MST measures", key="-CALC_PLI_MST-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [sg.Checkbox("Calculate PLT", key="-CALC_PLT-", default=False, background_color=MAIN_BG)],
-                    [
-                         sg.Text("PLT Noise Threshold (ms):", background_color=MAIN_BG),
-                         sg.Input("30", key="-PLT_THRESH-", size=(4, 1)),
-                    ],
-                    [sg.Checkbox("Calculate AEC", key="-CALC_AEC-", default=False, background_color=MAIN_BG)],
-                    [
-                        sg.Checkbox(
-                            "Use orthogonalization (AECc)", key="-USE_AECC-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [
-                        sg.Checkbox(
-                            "Concatenate epochs for AEC(c)",
-                            key="-CONCAT_AECC-",
-                            default=False,
-                            background_color=MAIN_BG,
-                        )
-                    ],
-                    [
-                        sg.Checkbox(
-                            "Calculate AEC(c) MST measures",
-                            key="-CALC_AEC_MST-",
-                            default=False,
-                            background_color=MAIN_BG,
-                        )
-                    ],
-                    [
-                        sg.Checkbox(
-                            "AEC make negative corr. zero",
-                            key="-AEC_FORCE_POSITIVE-",
-                            default=True,
-                            background_color=MAIN_BG,
-                        )
-                    ],
-                ],
-                background_color=MAIN_BG,
-            )
-        ],
-    ]
-
-    progress_section = [
-        [
-            sg.Frame(
-                "Progress",
-                [
+                    # Increased progress bar width from 30 to 45
+                    [sg.ProgressBar(100, orientation="h", size=(45, 20), key="-PROGRESS-", bar_color=(HEADER_BG, "#FFFFFF"))],
+                    [sg.Text("Log Output:", background_color=MAIN_BG, font=("Helvetica", 9, "bold"))],
                     [
                         sg.Multiline(
-                            size=(70, 6),
+                            # Increased size from 35 to 60
+                            size=(60, 15),
                             key="-LOG-",
                             autoscroll=True,
                             reroute_stdout=True,
                             disabled=True,
                             background_color="#FFFFFF",
                             text_color="#000000",
-                        )
-                    ],
-                    [
-                        sg.ProgressBar(
-                            100, orientation="h", size=(60, 20), key="-PROGRESS-", bar_color=(HEADER_BG, MAIN_BG)
-                        )
-                    ],
-                    [
-                        sg.Column(
-                            [
-                                [
-                                    sg.Button(
-                                        "Process",
-                                        size=(10, 1),
-                                        button_color=BUTTON_COLOR,
-                                        font=("Helvetica", 11, "bold"),
-                                    ),
-                                    sg.Button(
-                                        "Exit",
-                                        size=(8, 1),
-                                        button_color=(HEADER_TEXT, "#AB4F4F"),
-                                        font=("Helvetica", 11),
-                                    ),
-                                ]
-                            ],
-                            justification="center",
-                            expand_x=True,
-                            pad=(0, 5),
-                            background_color=MAIN_BG,
+                            font=("Courier New", 8),
+                            expand_x=True, # Allow horizontal expansion
+                            expand_y=True  # Allow vertical expansion
                         )
                     ],
                 ],
-                background_color=MAIN_BG,
+                background_color=MAIN_BG, expand_x=True, expand_y=True
             )
         ],
     ]
 
+    # --- Main Layout Assembly ---
     layout = [
         [sg.Column(header, background_color=HEADER_BG, expand_x=True)],
         [
-            sg.Column(
-                [
-                    [
-                        sg.Column(left_column, background_color=MAIN_BG, pad=(5, 5)),
-                        sg.Column(middle_column, background_color=MAIN_BG, pad=(5, 5)),
-                        sg.Column(right_column, background_color=MAIN_BG, pad=(5, 5)),
-                    ],
-                    [sg.Column(progress_section, background_color=MAIN_BG, pad=(0, 2))],
-                ],
-                background_color=MAIN_BG,
-                pad=(5, 5),
-            )
+            sg.Column(step_1_layout, background_color=MAIN_BG, vertical_alignment='top', expand_y=True),
+            sg.VerticalSeparator(color="#D0D0D0"), # Visual divider
+            sg.Column(step_2_layout, background_color=MAIN_BG, vertical_alignment='top', expand_y=True),
+            sg.VerticalSeparator(color="#D0D0D0"), # Visual divider
+            sg.Column(step_3_layout, background_color=MAIN_BG, vertical_alignment='top', expand_y=True, expand_x=True),
         ],
     ]
 
-    return sg.Window("EEG Analysis Tool", layout, background_color=MAIN_BG, finalize=True, margins=(0, 0))
+    return sg.Window("EEG-Pype", layout, background_color=MAIN_BG, finalize=True, margins=(0, 0), resizable=True)
 
 
 def create_matrix_folder_structure(base_folder, matrix_folder_name, mst_folder_name=None):
