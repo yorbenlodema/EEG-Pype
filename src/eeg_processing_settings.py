@@ -19,7 +19,7 @@ f_size = 5  # font size filter frequency inputs
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
 
-EEG_version = "v4.4.3"
+EEG_version = "v4.4.4"
 
 # script run defaults
 settings["default_epoch_length"] = 8
@@ -61,6 +61,74 @@ settings["channel_names_row"] = 0  # Channel names are in row ... +1 (0-based co
 
 # ICLabel settings
 settings["use_icalabel"] = 0  # Default off, user can enable
+
+# Beamformer atlas settings
+settings["beamformer_atlases"] = {
+    "Desikan-Killiany (68 cortical)": "desikan",
+    "Brainnetome (246 regions)": "bna",
+    "AAL2 (120 regions)": "aal2",
+    "AAL3 (170 regions)": "aal3",
+}
+
+settings["beamformer_atlas_selection"] = ["desikan"]  # Default: DK only
+settings["beamformer_include_subcortical"] = False  # Cortical only by default
+
+# Atlas metadata: voxel files, label files, and whether atlas has subcortical regions
+settings["atlas_config"] = {
+    "desikan": {
+        "voxels": "DesikanVox.xlsx",
+        "labels": "DesikanVoxLabels.csv",
+        "labels_cortical": "DesikanVoxLabels.csv",  # DK is cortical-only
+        "has_subcortical": False,
+        "n_regions_full": 68,
+        "n_regions_cortical": 68,
+    },
+    "bna": {
+        "voxels": "BNA_Vox.xlsx",
+        "labels": "BNA_VoxLabels.csv",
+        "labels_cortical": "BNA_VoxLabels_cortical.csv",
+        "has_subcortical": True,
+        "n_regions_full": 246,
+        "n_regions_cortical": 210,
+        # Subcortical regions are indices 211-246 (1-indexed) in BNA
+        "subcortical_indices": list(range(210, 246)),  # 0-indexed
+    },
+    "aal2": {
+        "voxels": "AAL2_Vox.xlsx",
+        "labels": "AAL2_VoxLabels.csv",
+        "labels_cortical": "AAL2_VoxLabels_cortical.csv",
+        "has_subcortical": True,
+        "n_regions_full": 120,
+        "n_regions_cortical": 80,
+        "subcortical_indices": [
+            16, 17, 40, 41, 44, 45, 74, 75, 76, 77, 78, 79, 80, 81,
+            94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105,
+            106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+            117, 118, 119,
+        ],
+    },
+    "aal3": {
+        "voxels": "AAL3_Vox.xlsx",
+        "labels": "AAL3_VoxLabels.csv",
+        "labels_cortical": "AAL3_VoxLabels_cortical.csv",
+        "has_subcortical": True,
+        "n_regions_full": 166,
+        "n_regions_cortical": 84,
+        "subcortical_indices": [
+            16, 17, 38, 39, 42, 43, 72, 73, 74, 75, 76, 77,
+            90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,
+            102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
+            112, 113, 114, 115, 116, 117, 118, 119, 120, 121,
+            122, 123, 124, 125, 126, 127, 128, 129, 130, 131,
+            132, 133, 134, 135, 136, 137, 138, 139, 140, 141,
+            142, 143, 144, 145, 152, 153, 154, 155, 156, 157,
+            158, 159, 160, 161, 162, 163, 164, 165,
+        ],
+    },
+}
+
+# Display order for GUI
+settings["beamformer_atlas_order"] = ["desikan", "bna", "aal2", "aal3"]
 
 # .txt reading settings
 settings["txt_delimiter"] = "auto"  # Options: "auto", "tab", "comma", "semicolon", "space"
