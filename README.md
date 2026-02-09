@@ -3,7 +3,7 @@
 With our software, we hope to provide users with an accessible way to preprocess resting-state EEG files, while still including powerful analysis tools. We do this by combining several functions from the MNE (MEG/EEG preprocessing) open-source project *(Gramfort et al., Frontiers in Neuroscience, 2013)*. Inspiration was taken from BrainWave as well (https://github.com/CornelisStam/BrainWave), especially for the quantitative analysis module. By using an intuitive graphical user interface on top of a Python script, we hope that our software is easy to start using without coding experience, while still allowing more experienced users to adapt the software to their needs by altering the underlying code.
 
 The software is currently able to:
-- Open raw EEG files of type .txt, .bdf, .edf, .eeg and .fif.
+- Open raw EEG files of types supported by MNE's mne.io.read_raw() function.
 - Open a single EEG or choose analysis settings for an entire batch of files.
 - Apply a montage to the raw EEG (including electrode coordinates necessary for some analyses).
 - Drop bad channels entirely.
@@ -21,7 +21,7 @@ The software is currently able to:
 
 The software is not (yet) able to:
 - Analyse task EEG data.
-- Open EEG files with data types not mentioned previously (you can put this in a new GitHub issue if you need to load another EEG filetype).
+- Analyze MEG data.
 
 In addition, a separate quantitative analysis module allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing module. See below for more details.
 
@@ -32,9 +32,9 @@ When no raw EEG files show up in the file selection window, please choose a diff
 
 For the bad channel selection (for interpolation), you can select bad channels by clicking the channel names on the left side of the plot. The deselected (grey) channels will be interpolated. For ICA, this works the same but then artefact-containing components can be deselected in the graph plot of the ICA. These components will be filtered out of the EEG. For interactive epoch selection, epochs of insufficient quality can be deselected by clicking anywhere on the epoch, which will then turn red. This means the epoch will not be saved.
 
-If the program glitches or stops working, we found that it works best to stop the Python process, for instance by clicking the red stop button or restarting the kernel in Spyder IDE or similar.
+We have added support for MNE's ICALabel functionality, helping the user along by providing predictions of what type of activity the independent components correspond to (i.e., different types of artifacts or brain activity). This prediction is based on a machine learning model, and the prediction is accompanied by a prediciton certainty percentage. See also their [website](https://mne.tools/mne-icalabel/stable/index.html).
 
-RESOLVED: ~~There is currently an unresolved problem where removing multiple ICA components and/or interpolating channels can result in a data rank that is too low to caculate the beamforming solution. See [here](https://mailman.science.ru.nl/pipermail/fieldtrip/2014-March/033565.html) for an explanation of this problem.~~
+If the program glitches or stops working, we found that it works best to stop the Python process, for instance by clicking the red stop button or restarting the kernel in Spyder IDE or similar.
 
 When using Spyder IDE to run the program, initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
 
