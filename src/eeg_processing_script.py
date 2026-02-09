@@ -14,7 +14,6 @@ import pandas as pd
 from mne.beamformer import apply_lcmv_raw, make_lcmv
 from mne.datasets import fetch_fsaverage
 from mne.preprocessing import ICA
-from mne_icalabel import label_components
 from mne_icalabel.iclabel import iclabel_label_components
 
 from eeg_processing_settings import (
@@ -31,7 +30,7 @@ import PySimpleGUI as sg
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.4.3"
+EEG_version = "v4.4.4"
 
 # initial values
 progress_value1 = 20
@@ -106,7 +105,6 @@ def print_dict(_dict):  # pprint and json.print do not work well with composite 
     """Print dictionary."""
     for key, value in _dict.items():
         print(key, ":", value)
-
 
 def write_config_file(config):
     """Write config file in .pkl format."""
@@ -586,39 +584,138 @@ def ask_icalabel_option(config):
 
 
 def ask_beamformer_option(config):
-    """Ask if user wants to apply Beamforming."""
-    txt = "Do you want to apply Beamforming?"
+    """Ask if user wants to apply Beamforming and configure atlas settings."""
     url = "https://mne.tools/stable/auto_tutorials/inverse/50_beamformer_lcmv.html"
+    
+    # Build atlas checkboxes dynamically
+    atlas_checkboxes = []
+    for atlas_key in settings["beamformer_atlas_order"]:
+        # Find display name for this atlas
+        display_name = [k for k, v in settings["beamformer_atlases"].items() if v == atlas_key][0]
+        default_checked = atlas_key in config.get("beamformer_atlas_selection", ["desikan"])
+        atlas_checkboxes.append(
+            sg.Checkbox(
+                display_name,
+                default=default_checked,
+                key=f"-ATLAS_{atlas_key.upper()}-",
+                background_color="white",
+                enable_events=True,
+            )
+        )
+    
+    # Check if any selected atlas has subcortical regions
+    def any_atlas_has_subcortical(selected_atlases):
+        return any(
+            settings["atlas_config"][a].get("has_subcortical", False) 
+            for a in selected_atlases
+        )
+    
+    # Initial state for subcortical option
+    initial_atlases = config.get("beamformer_atlas_selection", ["desikan"])
+    subcortical_enabled = any_atlas_has_subcortical(initial_atlases)
+    
     layout = [
-        [sg.Text(txt, enable_events=True, background_color="white")],
-        [sg.Button("Yes"), sg.Button("No")],
+        [sg.Text("Do you want to apply Beamforming?", background_color="white", font=font)],
+        [sg.Text("", size=(1, 1), background_color="white")],  # Spacer
+        [sg.Text("Select atlas(es) for source reconstruction:", background_color="white")],
+        [sg.Column([[cb] for cb in atlas_checkboxes], background_color="white", pad=(20, 5))],
+        [sg.Text("", size=(1, 1), background_color="white")],  # Spacer
+        [sg.Text("Region selection:", background_color="white")],
+        [
+            sg.Radio(
+                "Cortical regions only",
+                "SUBCORT",
+                default=not config.get("beamformer_include_subcortical", False),
+                key="-CORTICAL_ONLY-",
+                background_color="white",
+                disabled=not subcortical_enabled,
+            )
+        ],
+        [
+            sg.Radio(
+                "Cortical + Subcortical regions",
+                "SUBCORT",
+                default=config.get("beamformer_include_subcortical", False),
+                key="-INCLUDE_SUBCORT-",
+                background_color="white",
+                disabled=not subcortical_enabled,
+            )
+        ],
+        [
+            sg.Text(
+                "(Only available for BNA, AAL2, AAL3)",
+                font=("Ubuntu Medium", 10),
+                text_color="gray",
+                background_color="white",
+                key="-SUBCORT_NOTE-",
+            )
+        ],
+        [sg.Text("", size=(1, 1), background_color="white")],  # Spacer
+        [sg.Button("Apply Beamforming", **button_style), sg.Button("Skip Beamforming", **button_style)],
         [sg.Push(background_color="white"), sg.Button("More info")],
     ]
-    window = sg.Window(
-        "EEG processing input parameters",
+    
+    window_bf = sg.Window(
+        "Beamforming Settings",
         layout,
         modal=True,
         use_custom_titlebar=True,
         font=font,
         background_color="white",
         location=(100, 100),
+        finalize=True,
     )
+    
     while True:
-        event, values = window.read()
+        event, values = window_bf.read()
+        
         if event == "More info":
             wb.open_new_tab(url)
             continue
-        if event == "Yes":
+        
+        # Handle atlas checkbox changes - update subcortical option availability
+        if event and event.startswith("-ATLAS_"):
+            selected = []
+            for atlas_key in settings["beamformer_atlas_order"]:
+                if values.get(f"-ATLAS_{atlas_key.upper()}-", False):
+                    selected.append(atlas_key)
+            
+            subcortical_enabled = any_atlas_has_subcortical(selected)
+            window_bf["-CORTICAL_ONLY-"].update(disabled=not subcortical_enabled)
+            window_bf["-INCLUDE_SUBCORT-"].update(disabled=not subcortical_enabled)
+            
+            # If no atlas with subcortical is selected, force cortical-only
+            if not subcortical_enabled:
+                window_bf["-CORTICAL_ONLY-"].update(value=True)
+            continue
+        
+        if event == "Apply Beamforming":
+            # Collect selected atlases
+            selected_atlases = []
+            for atlas_key in settings["beamformer_atlas_order"]:
+                if values.get(f"-ATLAS_{atlas_key.upper()}-", False):
+                    selected_atlases.append(atlas_key)
+            
+            if not selected_atlases:
+                sg.popup_error(
+                    "Please select at least one atlas",
+                    location=(100, 100),
+                    font=font,
+                    background_color="white",
+                )
+                continue
+            
             config["apply_beamformer"] = 1
-            config["apply_average_ref"] = 1  # prereq for beamformer
+            config["apply_average_ref"] = 1  # Prerequisite for beamformer
+            config["beamformer_atlas_selection"] = selected_atlases
+            config["beamformer_include_subcortical"] = values.get("-INCLUDE_SUBCORT-", False)
             break
-        if event == "No":
+        
+        if event in (sg.WIN_CLOSED, "Skip Beamforming"):
             config["apply_beamformer"] = 0
             break
-        if event in (sg.WIN_CLOSED, "Ok"):
-            break
-    window.close()
-
+    
+    window_bf.close()
     return config
 
 
@@ -1477,6 +1574,28 @@ def set_file_output_related_names(config):
     config["file_path_source"] = os.path.join(config["file_output_subdirectory"], file_name_source)
     return config
 
+def get_source_file_path(config, atlas_name, include_subcortical):
+    """Generate the source-level output file path for a given atlas.
+    
+    Parameters
+    ----------
+    config : dict
+        Configuration dictionary (must have 'file_output_subdirectory' and 'file_path' set).
+    atlas_name : str
+        Atlas identifier: 'desikan', 'bna', 'aal2', or 'aal3'.
+    include_subcortical : bool
+        Whether subcortical regions are included.
+        
+    Returns
+    -------
+    str
+        The file path base for source-level output.
+    """
+    root, ext = os.path.splitext(config["file_path"])
+    region_str = "full" if include_subcortical else "cortical"
+    file_name_source = f"{os.path.basename(root)}_Source_{atlas_name}_{region_str}"
+    return os.path.join(config["file_output_subdirectory"], file_name_source)
+
 
 def create_dict():
     """Create initial dict with starting values for processing."""
@@ -1486,27 +1605,68 @@ def create_dict():
         sg.popup_error("Error create_dict: ", location=(100, 100), font=font)
         window.close()
 
-def create_spatial_filter(raw_b):
+
+def create_spatial_filter(raw_b, atlas_name="desikan", include_subcortical=False):
     """Create a spatial filter for the LCMV beamforming method.
 
     The MNE function make_lcmv is used.
+    
+    Parameters
+    ----------
+    raw_b : mne.io.Raw
+        The raw EEG data (already preprocessed, bad channels dropped).
+    atlas_name : str
+        Atlas identifier: 'desikan', 'bna', 'aal2', or 'aal3'.
+    include_subcortical : bool
+        If True, include subcortical regions (only applies to BNA, AAL2, AAL3).
+        
+    Returns
+    -------
+    spatial_filter : instance of Beamformer
+        The LCMV spatial filter.
+    channel_names : list of str
+        The channel/region names for the source space.
     """
+    atlas_cfg = settings["atlas_config"][atlas_name]
+    
     fs_dir = fetch_fsaverage(verbose=True)
     subject = "fsaverage"
     trans = "fsaverage"
     
-    #current_data_rank = mne.rank(raw_b.info)['eeg'] 
-    
     # Loading boundary-element model
     bem = os.path.join(fs_dir, "bem", "fsaverage-5120-5120-5120-bem-sol.fif")
-    # Setting up source space according to Desikan-Killiany atlas
-    DesikanVox = pd.read_excel("DesikanVox.xlsx", header=None)
-    Voxels_pos = DesikanVox.to_numpy()
-    Voxels_pos = Voxels_pos.astype(float)
+    
+    # Load voxel positions from atlas file
+    voxels_df = pd.read_excel(atlas_cfg["voxels"], header=None)
+    Voxels_pos = voxels_df.to_numpy().astype(float)
+    
+    # Load region labels
+    if include_subcortical and atlas_cfg.get("has_subcortical", False):
+        labels_df = pd.read_csv(atlas_cfg["labels"], header=None)
+    else:
+        labels_df = pd.read_csv(atlas_cfg["labels_cortical"], header=None)
+        # Filter voxel positions to cortical only if needed
+        if atlas_cfg.get("has_subcortical", False):
+            subcort_idx = atlas_cfg.get("subcortical_indices", [])
+            cortical_mask = np.ones(len(Voxels_pos), dtype=bool)
+            cortical_mask[subcort_idx] = False
+            Voxels_pos = Voxels_pos[cortical_mask]
+    
+    channel_names = labels_df[0].tolist()
+    
+    # Verify dimensions match
+    if len(Voxels_pos) != len(channel_names):
+        raise ValueError(
+            f"Mismatch between voxel positions ({len(Voxels_pos)}) and "
+            f"labels ({len(channel_names)}) for atlas {atlas_name}"
+        )
+    
+    # Calculate normals (pointing outward from origin)
     Voxels_nn = -Voxels_pos
-    # Normalize the normals to unit length
     Voxels_nn /= np.linalg.norm(Voxels_nn, axis=1)[:, np.newaxis]
     Voxels_pos_dict = {"rr": Voxels_pos, "nn": Voxels_nn}
+    
+    # Setting up source space
     src = mne.setup_volume_source_space(
         subject=subject,
         pos=Voxels_pos_dict,
@@ -1514,18 +1674,17 @@ def create_spatial_filter(raw_b):
         bem=bem,
     )
 
-    fwd = mne.make_forward_solution(raw_b.info, trans=trans, src=src, bem=bem, eeg=True, mindist=0, n_jobs=None)
+    fwd = mne.make_forward_solution(
+        raw_b.info, trans=trans, src=src, bem=bem, eeg=True, mindist=0, n_jobs=None
+    )
 
     # Inverse Problem
     data_cov = mne.compute_raw_covariance(raw_b)
-    
     ranks = mne.compute_rank(raw_b, rank=None, tol='auto')
     
-    # Create a new matrix noise_matrix (noise cov. matrix) with the same size as data_cov
+    # Create noise covariance matrix
     noise_matrix = np.zeros_like(data_cov["data"])
     diagonal_values = np.diag(data_cov["data"])
-    
-    # Set the diagonal values of noise_matrix to the diagonal values of data_cov
     np.fill_diagonal(noise_matrix, diagonal_values)
     noise_cov = mne.Covariance(
         data=noise_matrix,
@@ -1534,8 +1693,9 @@ def create_spatial_filter(raw_b):
         projs=data_cov["projs"],
         nfree=data_cov["nfree"],
     )
+    
     # LCMV beamformer
-    return make_lcmv(
+    spatial_filter = make_lcmv(
         raw_b.info,
         fwd,
         data_cov,
@@ -1543,8 +1703,10 @@ def create_spatial_filter(raw_b):
         noise_cov=noise_cov,
         pick_ori="max-power",
         weight_norm="unit-noise-gain",
-        rank=ranks, 
+        rank=ranks,
     )
+    
+    return spatial_filter, channel_names
 
 
 def get_montage_name_from_selection(selection):
@@ -2534,13 +2696,47 @@ def perform_average_reference(raw):
     return raw
 
 
-def perform_beamform(raw, config):
-    """Drop bad channels and creates the spatial filter used for LCMV beamforming."""
+def perform_beamform(raw, config, atlas_name="desikan", include_subcortical=False):
+    """Drop bad channels and create the spatial filter used for LCMV beamforming.
+    
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw EEG data.
+    config : dict
+        Configuration dictionary.
+    atlas_name : str
+        Atlas identifier: 'desikan', 'bna', 'aal2', or 'aal3'.
+    include_subcortical : bool
+        If True, include subcortical regions.
+        
+    Returns
+    -------
+    spatial_filter : instance of Beamformer
+        The LCMV spatial filter.
+    channel_names : list of str
+        The region/channel names for the source space.
+    """
     raw.drop_channels(config[file_name, "bad"])
-    msg = "channels left in raw_beamform:" + str(len(raw.ch_names))
+    msg = f"Channels left in raw_beamform ({atlas_name}): {len(raw.ch_names)}"
     window["-RUN_INFO-"].update(msg + "\n", append=True)
     raw = perform_average_reference(raw)
-    return create_spatial_filter(raw)
+    
+    msg = f"Creating spatial filter for {atlas_name} atlas..."
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    spatial_filter, channel_names = create_spatial_filter(
+        raw, 
+        atlas_name=atlas_name, 
+        include_subcortical=include_subcortical
+    )
+    
+    n_regions = len(channel_names)
+    subcort_str = "with subcortical" if include_subcortical else "cortical only"
+    msg = f"Spatial filter created: {atlas_name} ({n_regions} regions, {subcort_str})"
+    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+    return spatial_filter, channel_names
 
 
 def perform_epoch_selection(raw, config, sfreq):
@@ -2644,20 +2840,32 @@ def apply_bad_channels(raw, config):
     return raw
 
 
-def apply_spatial_filter(raw, config, spatial_filter):
-    """Apply spatial filter to the final raw EEG object used to export the final output."""
-    desikanlabels = pd.read_csv("DesikanVoxLabels.csv", header=None)
-    desikan_channel_names = desikanlabels[0].tolist()
+def apply_spatial_filter(raw, config, spatial_filter, channel_names):
+    """Apply spatial filter to the final raw EEG object used to export the final output.
+    
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw EEG data.
+    config : dict
+        Configuration dictionary.
+    spatial_filter : instance of Beamformer
+        The LCMV spatial filter.
+    channel_names : list of str
+        The region/channel names for the source space.
+        
+    Returns
+    -------
+    raw_source : mne.io.RawArray
+        The source-level data as a Raw object.
+    """
     stc = apply_lcmv_raw(raw, spatial_filter)
-    info = mne.create_info(ch_names=desikan_channel_names, sfreq=config["sample_frequency"], ch_types="eeg")
-    raw_source = mne.io.RawArray(stc.data, info)
-    raw_source.resample(config["sample_frequency"] // config["downsample_factor"], npad="auto")
-    msg = (
-        "Beamformed output signal downsampled to "
-        + str(config["sample_frequency"] // config["downsample_factor"])
-        + " Hz"
+    info = mne.create_info(
+        ch_names=channel_names, 
+        sfreq=config["sample_frequency"], 
+        ch_types="eeg"
     )
-    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    raw_source = mne.io.RawArray(stc.data, info)
     return raw_source
 
 
@@ -2865,9 +3073,20 @@ while True:  # @noloop remove
 
                 # Interpolate bad channels after ICA
                 raw_temp.interpolate_bads(reset_bads=True)
-
+                
                 if config["apply_beamformer"]:
-                    spatial_filter = perform_beamform(raw_temp, config)
+                    spatial_filters = {}
+                    source_channel_names = {}
+                    
+                    for atlas_name in config["beamformer_atlas_selection"]:
+                        sf, ch_names = perform_beamform(
+                            raw_temp.copy(),
+                            config,
+                            atlas_name=atlas_name,
+                            include_subcortical=config["beamformer_include_subcortical"]
+                        )
+                        spatial_filters[atlas_name] = sf
+                        source_channel_names[atlas_name] = ch_names
 
                 if config["sample_frequency"] > 1000: 
                     raw_temp, temporary_sample_f = perform_temp_down_sampling(raw_temp, config)
@@ -2922,26 +3141,46 @@ while True:  # @noloop remove
                     raw_beamform_output = perform_average_reference(raw_beamform_output)
                     msg = "Average reference applied for beamforming"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-
+                    
                     raw_beamform_output.drop_channels(config[file_name, "bad"])
-                    msg = "Dropped " + str(len(config[file_name, "bad"])) + " bad channels on beamformed output signal"
+                    msg = f"Dropped {len(config[file_name, 'bad'])} bad channels on beamformed output signal"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-                    msg = (
-                        "The EEG file used for beamforming now contains "
-                        + str(len(raw_beamform_output.ch_names))
-                        + " channels"
-                    )
+                    msg = f"The EEG file used for beamforming now contains {len(raw_beamform_output.ch_names)} channels"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
+                    
+                    # Process each selected atlas
+                    raw_sources = {}
+                    for atlas_name in config["beamformer_atlas_selection"]:
+                        msg = f"Applying beamformer for atlas: {atlas_name}"
+                        window["-RUN_INFO-"].update(msg + "\n", append=True)
+                        
+                        raw_source = apply_spatial_filter(
+                            raw_beamform_output.copy(),
+                            config,
+                            spatial_filters[atlas_name],
+                            source_channel_names[atlas_name]
+                        )
+                        raw_sources[atlas_name] = raw_source
+                        
+                        config[f"file_path_source_{atlas_name}"] = get_source_file_path(
+                            config, 
+                            atlas_name, 
+                            config["beamformer_include_subcortical"]
+                        )
 
-                    raw_source = apply_spatial_filter(raw_beamform_output, config, spatial_filter)
-
+                # Single downsampling point for all output signals
                 config["downsampled_sample_frequency"] = config["sample_frequency"] // config["downsample_factor"]
-
+                
                 if config["downsample_factor"] != 1:
                     raw.resample(config["downsampled_sample_frequency"], npad="auto")
+                    
                     if config["apply_beamformer"]:
-                        raw_source.resample(config["downsampled_sample_frequency"], npad="auto")
-                    msg = "Output signal downsampled to " + str(config["downsampled_sample_frequency"]) + " Hz"
+                        for atlas_name in config["beamformer_atlas_selection"]:
+                            raw_sources[atlas_name].resample(
+                                config["downsampled_sample_frequency"], npad="auto"
+                            )
+                    
+                    msg = f"All output signals downsampled to {config['downsampled_sample_frequency']} Hz"
                 else:
                     msg = "No downsampling applied to output signal"
                 window["-RUN_INFO-"].update(msg + "\n", append=True)
@@ -2979,35 +3218,41 @@ while True:  # @noloop remove
                             )
 
                     if config["apply_beamformer"]:
-                        # Export beamformed epochs
-                        selected_epochs_source = apply_epoch_selection(
-                            raw_source, config, config["downsampled_sample_frequency"]
-                        )
-                        save_epoch_data_to_txt(
-                            selected_epochs_source,
-                            config["file_path_source"],
-                            scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
-                        )
-
-                        if config["apply_output_filtering"]:
-                            for low_band, high_band in frequency_band_pairs:
-                                selected_epochs_source_filt = apply_epoch_selection(
-                                    raw_source,
-                                    config,
-                                    sfreq=config["downsampled_sample_frequency"],
-                                    filtering=True,
-                                    l_freq=config["cut_off_frequency", low_band],
-                                    h_freq=config["cut_off_frequency", high_band],
-                                )
-
-                                save_epoch_data_to_txt(
-                                    selected_epochs_source_filt,
-                                    config["file_path_source"],
-                                    scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
-                                    filtering=True,
-                                    l_freq=config["cut_off_frequency", low_band],
-                                    h_freq=config["cut_off_frequency", high_band],
-                                )
+                        # Export beamformed epochs for each atlas
+                        for atlas_name in config["beamformer_atlas_selection"]:
+                            msg = f"Exporting source-level epochs for {atlas_name}..."
+                            window["-RUN_INFO-"].update(msg + "\n", append=True)
+                            
+                            selected_epochs_source = apply_epoch_selection(
+                                raw_sources[atlas_name], 
+                                config, 
+                                config["downsampled_sample_frequency"]
+                            )
+                            save_epoch_data_to_txt(
+                                selected_epochs_source,
+                                config[f"file_path_source_{atlas_name}"],
+                                scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
+                            )
+                    
+                            if config["apply_output_filtering"]:
+                                for low_band, high_band in frequency_band_pairs:
+                                    selected_epochs_source_filt = apply_epoch_selection(
+                                        raw_sources[atlas_name],
+                                        config,
+                                        sfreq=config["downsampled_sample_frequency"],
+                                        filtering=True,
+                                        l_freq=config["cut_off_frequency", low_band],
+                                        h_freq=config["cut_off_frequency", high_band],
+                                    )
+                    
+                                    save_epoch_data_to_txt(
+                                        selected_epochs_source_filt,
+                                        config[f"file_path_source_{atlas_name}"],
+                                        scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
+                                        filtering=True,
+                                        l_freq=config["cut_off_frequency", low_band],
+                                        h_freq=config["cut_off_frequency", high_band],
+                                    )
 
                 else:  # equals no epoch_output
                     msg = "No epoch selection performed"
@@ -3038,34 +3283,38 @@ while True:  # @noloop remove
                             )
 
                     if config["apply_beamformer"]:
-                        save_whole_EEG_to_txt(
-                            raw_source,
-                            config,
-                            config["file_path_source"],
-                            scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
-                        )
-
-                        if config["apply_output_filtering"]:
-                            frequency_band_pairs = list(
-                                zip(config["frequency_bands"][::2], config["frequency_bands"][1::2], strict=True)
+                        for atlas_name in config["beamformer_atlas_selection"]:
+                            msg = f"Exporting whole source-level EEG for {atlas_name}..."
+                            window["-RUN_INFO-"].update(msg + "\n", append=True)
+                            
+                            save_whole_EEG_to_txt(
+                                raw_sources[atlas_name],
+                                config,
+                                config[f"file_path_source_{atlas_name}"],
+                                scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
                             )
-
-                            for low_band, high_band in frequency_band_pairs:
-                                raw_source_filt = filter_output_raw(
-                                    raw_source,
-                                    config,
-                                    l_freq=config["cut_off_frequency", low_band],
-                                    h_freq=config["cut_off_frequency", high_band],
+                    
+                            if config["apply_output_filtering"]:
+                                frequency_band_pairs = list(
+                                    zip(config["frequency_bands"][::2], config["frequency_bands"][1::2], strict=True)
                                 )
-                                save_whole_EEG_to_txt(
-                                    raw_source_filt,
-                                    config,
-                                    config["file_path_source"],
-                                    scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
-                                    filtering=True,
-                                    l_freq=config["cut_off_frequency", low_band],
-                                    h_freq=config["cut_off_frequency", high_band],
-                                )
+                    
+                                for low_band, high_band in frequency_band_pairs:
+                                    raw_source_filt = filter_output_raw(
+                                        raw_sources[atlas_name],
+                                        config,
+                                        l_freq=config["cut_off_frequency", low_band],
+                                        h_freq=config["cut_off_frequency", high_band],
+                                    )
+                                    save_whole_EEG_to_txt(
+                                        raw_source_filt,
+                                        config,
+                                        config[f"file_path_source_{atlas_name}"],
+                                        scalings={"eeg": 10, "mag": 1e15, "grad": 1e13},
+                                        filtering=True,
+                                        l_freq=config["cut_off_frequency", low_band],
+                                        h_freq=config["cut_off_frequency", high_band],
+                                    )
 
                 write_config_file(config)
 
