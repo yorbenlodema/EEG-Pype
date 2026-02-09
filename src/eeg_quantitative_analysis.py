@@ -288,11 +288,11 @@ def create_gui():
                             "Calc. PLI MST measures", key="-CALC_PLI_MST-", default=False, background_color=MAIN_BG
                         )
                     ],
-                    # [sg.Checkbox("Calculate PLT", key="-CALC_PLT-", default=False, background_color=MAIN_BG)],
-                    # [
-                    #      sg.Text("PLT Threshold (ms):", background_color=MAIN_BG),
-                    #      sg.Input("30", key="-PLT_THRESH-", size=(4, 1)),
-                    # ],
+                    [sg.Checkbox("Calculate PLT", key="-CALC_PLT-", default=False, background_color=MAIN_BG)],
+                    [
+                         sg.Text("PLT Threshold (ms):", background_color=MAIN_BG),
+                         sg.Input("30", key="-PLT_THRESH-", size=(4, 1)),
+                    ],
                     [sg.Checkbox("Calculate AEC", key="-CALC_AEC-", default=False, background_color=MAIN_BG)],
                     [
                         sg.Checkbox(
