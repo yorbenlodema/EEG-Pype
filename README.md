@@ -116,16 +116,7 @@ Check: Look at the left side of your command line. It should now say (EEG-Pype) 
 
 <img width="816" height="623" alt="SCR-20260128-oppy" src="https://github.com/user-attachments/assets/4eabec0e-9c5b-4300-a823-96f8090e3dfa" />
 
-### 4. Install the Graphical User Interface (PySimpleGUI). 
-Due to licensing changes, this specific part of the interface needs to be installed separately.
-	
-- Make sure your command line still says (EEG-Pype) on the left.
-- Copy and paste this exact line and press Enter:
-```Bash
-python -m pip install --force-reinstall --extra-index-url https://PySimpleGUI.net/install PySimpleGUI
-```
-
-### 5. Running the Software
+### 4. Running the Software
 Now that everything is installed, here is how you open the software. Make sure in Anaconda Prompt (Windows) or Terminal (Mac) you see (EEG-Pype) as the first thing on the last line, instead of (base). Seeing (EEG-Pype) here means that we have moved to or activated our virtual environment, containing the packages/dependencies EEG-Pype needs.
 
 - Open Anaconda Prompt (Miniconda3) (Windows) or Terminal (macOS).	
