@@ -31,3 +31,4 @@ dependencies:
 
   - pip:
     - matplotlib==3.9.0
+    - freesimplegui
