@@ -10,12 +10,12 @@ The software is currently able to:
 - Interpolate bad channels after visual inspection.
 - Apply an average reference.
 - Apply independent component analysis to remove artefacts. For this, you can change the number of components that are calculated (please read up on this before use).
-- Apply beamformer source reconstruction to the EEG (standard MNE LCMV beamformer with standard head model).
+- Apply LCMV beamformer, dSPM, MNE, eLORETA and sLORETA source reconstruction to the EEG (with a standard, template head model).
 - Down sample the file to a lower sample frequency by specifying a downsample factor (like a factor of 4: from 2048 Hz to 512 Hz for example).
 - Perform interactive visual epoch selection.
 - Perform filtering in different frequency bands and broadband output. These bands can be changed for the current batch in the GUI or more permanently in the settings file (see under tips and issues). The EEGs are filtered before cutting epochs, reducing edge artifacts.
 - Split alpha and beta bands into sub-bands (alpha1/alpha2 and beta1/beta2) for more detailed frequency analysis.
-- After performing analyses on a batch, rerun the batch with preservation of channel and epoch selection. To do this, select the previously created .pkl file.
+- After performing analyses on a batch, rerun the batch with preservation of channel and epoch selection. To do this, select the previously created .pkl file. This way, the user can rerun an analysis in a different manner for (some or all) previously analysed EEG files while preserving bad channel and epoch selection.
 - Log the chosen settings and performed analyses steps in a log file.
 - Correct channel names to match expected montage names through an interactive find/replace interface.
 
@@ -34,13 +34,13 @@ For the bad channel selection (for interpolation), you can select bad channels b
 
 We have added support for MNE's ICALabel functionality, helping the user along by providing predictions of what type of activity the independent components correspond to (i.e., different types of artifacts or brain activity). This prediction is based on a machine learning model, and the prediction is accompanied by a prediciton certainty percentage. See also their [website](https://mne.tools/mne-icalabel/stable/index.html).
 
-If the program glitches or stops working, we found that it works best to stop the Python process, for instance by clicking the red stop button or restarting the kernel in Spyder IDE or similar.
+Instead of running the main preprocessing module (i.e, eeg_processing_script.py) from an IDE like Spyder, there is also the option to run the script directly from the command line, in the same way as EEG-Pype's quantitative analysis module is run (see below in the **Quantitative analysis module** section for an explanation on how to do this). This is what we normally do since IDE's like Spyder can sometimes interfere with some plotting or 
+
+If the program glitches or stops working, we found that it works best to stop the Python process, for instance by clicking the red stop button or restarting the kernel in Spyder IDE or by stopping execution of the script in the Terminal or Command Prompt.
 
 When using Spyder IDE to run the program, initially Spyder can prompt the user that it does not have the spyder-kernels module. Please follow the instructions provided in the console.
 
 It is possible to change the underlying Python code (however, this is mostly unnecessary). Of the two main scripts, eeg_processing_script.py and eeg_processing_settings.py, the latter is the easiest to modify. Here, you can for instance rather easily change the standard output filter frequency bands (like delta, theta etc.). Note however, that it is currently not possible to increase or decrease the number of bands that the output is filtered in. In some IDE's, or with certain setups, it can also be necessary to change the matplotlib backend, for instance from TkAgg to Qt5Agg in the beginning of the settings script.
-
-If running the main preprocessing module (i.e, eeg_processing_script.py) from an IDE like Spyder does not work, there is also the option to run the script directly from the command line, in the same way as EEG-Pype's quantitative analysis module is run (see below in the **Quantitative analysis module** section for an explanation on how to do this).
 
 When loading EEG files, the software includes a channel name correction feature. This helps when your EEG files have channel names that don't exactly match the expected montage (e.g., channels prefixed with "EEG" or having different capitalization), even though recognition of channel names is necessary for correct montage application. The interface shows you the current channel names versus the expected names for your chosen montage, and allows you to use find/replace to correct them. These corrections are then applied to each file separately. This way, there is a check for each file to see whether the channel names match the MNE montage.
 
@@ -58,7 +58,7 @@ Additionally, there is also an option to include a custom frequency band in the 
 ## Installation
 
 This guide is designed for users who may not be familiar with coding or command-line tools. We will set up a virtual environment to keep all the software for EEG-Pype organized and install the necessary software step-by-step.
-Note: You only need to do steps 1 through 4 once.
+Note: You only need to do steps 1 through 3 once.
 
 ### 1. Install the necessary tools
 - Install Miniconda:
@@ -255,7 +255,6 @@ In the GUI, the number of threads should be specified. This number means that th
    - Quantifies complexity through ordinal patterns in the signal.
    - Options:
      - Time step (tau): Determines temporal scale of patterns (should be adjusted based on sampling rate).
-     - Integer conversion: Can improve detection of equal values.
      - Inversion: 1-JPE provides a measure of similarity rather than complexity.
    - PE calculated per channel, JPE for channel pairs.
 
