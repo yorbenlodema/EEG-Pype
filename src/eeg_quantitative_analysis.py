@@ -18,13 +18,13 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import psutil
-from antropy import sample_entropy
+from antropy import lziv_complexity, sample_entropy
 from scipy import signal
 from scipy.signal import hilbert
 from scipy.sparse.csgraph import minimum_spanning_tree
 import FreeSimpleGUI as sg
 
-EEG_version = "v4.4.5"
+EEG_version = "v4.5.0"
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def validate_frequency_bands():
 
 
 BATCH_SIZE = 10  # Number of subjects to process in parallel
-DEFAULT_THREADS = max(1, int(cpu_count() * 0.7))  # Use 80% of cores, no max limit
+DEFAULT_THREADS = max(1, int(cpu_count() * 0.7))
 
 
 class MemoryMonitor:
@@ -331,11 +331,6 @@ def create_gui():
                 [
                     [sg.Checkbox("Calculate JPE/PE", key="-CALC_JPE-", default=False, background_color=MAIN_BG)],
                     [sg.Text("Time step (tau):", background_color=MAIN_BG), sg.Input("1", key="-JPE_ST-", size=(5, 1))],
-                    [
-                        sg.Checkbox(
-                            "Convert to integers", key="-CONVERT_INTS_PE-", default=False, background_color=MAIN_BG
-                        )
-                    ],
                     [sg.Checkbox("Invert JPE (1-entropy)", key="-INVERT-", default=True, background_color=MAIN_BG)],
                     [
                         sg.Checkbox(
@@ -348,10 +343,22 @@ def create_gui():
                             "Calculate Approx. Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
                         )
                     ],
+                    
                     [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-APEN_M-", size=(3, 1))],
                     [
                         sg.Text("Tolerance (r):", background_color=MAIN_BG),
                         sg.Input("0.25", key="-APEN_R-", size=(3, 1)),
+                    ],
+                    [
+                        sg.Checkbox(
+                            "Calculate Lempel-Ziv Complexity", key="-CALC_LZC-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [
+                        sg.Text("Threshold:", background_color=MAIN_BG),
+                        sg.Combo(
+                            ["median", "mean"], default_value="median", key="-LZC_THRESH-", size=(8, 1)
+                        ),
                     ],
                 ],
                 background_color=MAIN_BG, expand_x=True
@@ -763,6 +770,56 @@ def calculate_sampen_for_channels(data, m=2):
             sampen_values[ch] = np.nan
 
     return sampen_values
+
+def calculate_lzc_for_channels(data, threshold="median"):
+    """Calculate Lempel-Ziv Complexity for each channel using antropy.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Time series data (samples x channels).
+    threshold : str or float
+        Binarization strategy. ``"median"`` (default) uses the per-channel
+        median; ``"mean"`` uses the per-channel mean; a float value is used
+        directly as a fixed threshold.
+
+    Returns
+    -------
+    np.ndarray
+        Normalized LZC value for each channel.
+    """
+    n_channels = data.shape[1]
+    lzc_values = np.zeros(n_channels)
+
+    for ch in range(n_channels):
+        try:
+            x = np.ascontiguousarray(data[:, ch], dtype=np.float64)
+
+            if len(x) < 2 or np.std(x) == 0:
+                lzc_values[ch] = 0.0
+                continue
+
+            # Binarize
+            if threshold == "median":
+                thr = np.median(x)
+            elif threshold == "mean":
+                thr = np.mean(x)
+            else:
+                thr = float(threshold)
+
+            binary = (x >= thr).astype(np.int32)
+
+            # antropy handles LZ76 + normalization internally
+            lzc_values[ch] = lziv_complexity(binary, normalize=True)
+
+            if ch % 10 == 0:
+                logger.info(f"Processed LZC for {ch}/{n_channels} channels")
+
+        except Exception:
+            logger.exception(f"Error calculating LZC for channel {ch}")
+            lzc_values[ch] = np.nan
+
+    return lzc_values
 
 def calculate_apen_for_channels(data, m=2, r=0.25):
     """Calculate Approximate Entropy for each channel.
@@ -1277,9 +1334,6 @@ def PLT(data, fs, threshold_ms=30):
     
     return PLT_matrix
 
-def convert_to_integers(data):
-    """Convert to integers using simple truncation."""
-    return data.astype(int)
 
 def calculate_aecc(data, orthogonalize=False, force_positive=True):
     """
@@ -1416,7 +1470,7 @@ def is_volume_conduction(pattern1, pattern2, mirrors):
     """Check for volume conduction."""
     return pattern1 == pattern2 or pattern2 == mirrors.get(pattern1, -1)
 
-def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
+def calculate_jpe(data, n=4, st=1, invert=True):
     """Calculate joint permutation entropy with corrected time delay handling.
 
     Parameters
@@ -1424,11 +1478,8 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
         data : numpy array (time points * channels)
         n : int, embedding dimension
         st : int, time delay (should scale with sampling frequency)
-        convert_ints : bool, whether to convert data to integers
         invert : bool, whether to return 1-JPE
     """
-    if convert_ints:
-        data = convert_to_integers(data)
 
     data = np.asarray(data)
     sz = data.shape[0]
@@ -1471,22 +1522,50 @@ def calculate_jpe(data, n=4, st=1, convert_ints=False, invert=True):
 def parse_epoch_filename(filename):
     """Parse epoch filename to extract components.
 
-    Example: test20231115kopie2_Source_level_4.0-8.0 Hz_Epoch_20.txt
-    Alternative: 41_Source_level_broadband_Epoch1.txt.
+    Handles both legacy format:
+        subject_Sensor_level_4.0-8.0 Hz_Epoch_1.txt
+        subject_Source_level_4.0-8.0 Hz_Epoch_1.txt
+    And new multi-atlas format:
+        subject_Source_desikan_cortical_4.0-8.0 Hz_Epoch_1.txt
+        subject_Source_bna_full_4.0-8.0 Hz_Epoch_1.txt
     """
-    # Extract the base name (everything before first underscore)
     base_name = filename.split("_")[0]
 
-    # Extract level type (Source or Sensor)
-    level_match = re.search(r"(Source|Sensor)_level", filename)
-    level_type = level_match.group(1).lower() if level_match else "unknown"
+    # Try new method+atlas source format first: _Source_{method}_{atlas}_{region}_
+    method_atlas_match = re.search(
+        r"_(Source)_(beamformer|sLORETA|eLORETA|dSPM)_(desikan|bna|aal2|aal3)_(cortical|full)_",
+        filename,
+        re.IGNORECASE,
+    )
+    # Also try atlas-only format (no method): _Source_{atlas}_{region}_
+    atlas_match = re.search(
+        r"_(Source)_(desikan|bna|aal2|aal3)_(cortical|full)_",
+        filename,
+        re.IGNORECASE,
+    )
+    if method_atlas_match:
+        method = method_atlas_match.group(2)
+        atlas = method_atlas_match.group(3).lower()
+        region = method_atlas_match.group(4).lower()
+        level_type = "source"
+        level_detail = f"source_{method}_{atlas}_{region}"
+    elif atlas_match:
+        atlas = atlas_match.group(2).lower()
+        region = atlas_match.group(3).lower()
+        level_type = "source"
+        level_detail = f"source_{atlas}_{region}"
+    else:
+        # Legacy format: _Source_level_ or _Sensor_level_
+        level_match = re.search(r"(Source|Sensor)_level", filename, re.IGNORECASE)
+        level_type = level_match.group(1).lower() if level_match else "unknown"
+        level_detail = level_type
 
-    # Extract frequency band. try numerical range first
+    # Extract frequency band - try numerical range first
     freq_match = re.search(r"(\d+\.?\d*-\d+\.?\d*)\s*Hz", filename)
     if freq_match:
         freq_band = freq_match.group(1)
     else:
-        # Try to extract broadband text
+        # Try to extract broadband text from filename parts
         parts = filename.split("_")
         for i, part in enumerate(parts):
             if part.lower() == "level" and i + 1 < len(parts):
@@ -1498,8 +1577,9 @@ def parse_epoch_filename(filename):
     return {
         "base_name": base_name,
         "level_type": level_type,
+        "level_detail": level_detail,
         "freq_band": freq_band,
-        "condition": f"{level_type}_{freq_band}",
+        "condition": f"{level_detail}_{freq_band}",
     }
 
 def process_subject_condition(args):
@@ -1508,7 +1588,6 @@ def process_subject_condition(args):
         subject,
         condition,
         epoch_files,
-        convert_ints_pe,
         invert,
         calc_jpe,
         calc_pli,
@@ -1540,6 +1619,8 @@ def process_subject_condition(args):
         welch_overlap,
         calc_plt,
         plt_threshold_ms,
+        calc_lzc,
+        lzc_threshold, 
     ) = args
 
     try:
@@ -1554,6 +1635,7 @@ def process_subject_condition(args):
         power_values = defaultdict(list)
         apen_values = []
         sampen_values = []
+        lzc_values = []
         sv_values = {}
         channel_names = None
 
@@ -1638,14 +1720,21 @@ def process_subject_condition(args):
                         if psd_method == "welch":
                             psd_kwargs.update({"window_length_ms": welch_window_ms, "overlap_percent": welch_overlap})
 
-                        # Calculate PSDs with appropriate settings
+                        # # Calculate PSDs with appropriate settings
+                        # spectral_data = calculate_PSD(
+                        #     data=data_values,
+                        #     fs=power_fs,
+                        #     method=psd_method,
+                        #     compute_spectrogram=calc_sv,
+                        #     window_length=sv_window if calc_sv else None,
+                        #     overlap=0.5 if calc_sv else None,
+                        #     **psd_kwargs,
+                        # )
+                        
                         spectral_data = calculate_PSD(
                             data=data_values,
                             fs=power_fs,
                             method=psd_method,
-                            compute_spectrogram=calc_sv,
-                            window_length=sv_window if calc_sv else None,
-                            overlap=0.5 if calc_sv else None,
                             **psd_kwargs,
                         )
 
@@ -1804,12 +1893,8 @@ def process_subject_condition(args):
 
                 # Calculate JPE and PE
                 if calc_jpe:
-                    if convert_ints_pe:
-                        data_values_pe = convert_to_integers(data_values)
-                    else:
-                        data_values_pe = data_values.copy()
+                    jpe_matrix = calculate_jpe(data_values, n=4, st=jpe_st, invert=invert)
 
-                    jpe_matrix = calculate_jpe(data_values_pe, n=4, st=jpe_st, invert=invert)
                     if save_matrices:
                         if avg_matrices["jpe"] is None:
                             avg_matrices["jpe"] = jpe_matrix
@@ -1819,7 +1904,7 @@ def process_subject_condition(args):
                     mask = ~np.eye(jpe_matrix.shape[0], dtype=bool)
                     jpe_values.append(jpe_matrix[mask].mean())
 
-                    pe_values_array = calculate_pe(data_values_pe, n=4, st=jpe_st)
+                    pe_values_array = calculate_pe(data_values, n=4, st=jpe_st)
                     pe_values.append(pe_values_array.mean())
 
                     if save_channel_averages:
@@ -1827,9 +1912,6 @@ def process_subject_condition(args):
                             channel_results[channel_names[ch]]["pe"].append(pe_values_array[ch])
                             channel_jpe = np.mean(jpe_matrix, axis=1)
                             channel_results[channel_names[ch]]["jpe"].append(channel_jpe[ch])
-
-                    if "data_values_pe" in locals():
-                        del data_values_pe
 
                 # Calculate PLI ad PLT nif requested
                 if calc_pli:
@@ -2073,6 +2155,20 @@ def process_subject_condition(args):
                     except Exception:
                         logger.exception("Error in ApEn calculation")
                         apen_values.append(np.nan)
+                        
+                if calc_lzc:
+                    try:
+                        lzc_values_ch = calculate_lzc_for_channels(data_values, threshold=lzc_threshold)
+
+                        if save_channel_averages:
+                            for ch in range(len(channel_names)):
+                                channel_results[channel_names[ch]]["lzc"].append(lzc_values_ch[ch])
+
+                        lzc_values.append(np.nanmean(lzc_values_ch))
+                        logger.info("Successfully calculated LZC for epoch")
+                    except Exception:
+                        logger.exception("Error in LZC calculation")
+                        lzc_values.append(np.nan)
 
             except Exception:
                 logger.exception(f"Error processing file {os.path.basename(file_path)}")
@@ -2144,6 +2240,7 @@ def process_subject_condition(args):
             "avg_aec": np.mean(aec_values) if aec_values and calc_aec else np.nan,
             "avg_sampen": np.mean(sampen_values) if sampen_values and calc_sampen else np.nan,
             "avg_apen": np.mean(apen_values) if apen_values and calc_apen else np.nan,
+            "avg_lzc": np.mean(lzc_values) if lzc_values and calc_lzc else np.nan,
             "n_epochs": len(epoch_files),
             "used_epochs": used_epochs_str,
             "channel_names": channel_names if channel_names else [],
@@ -2211,6 +2308,10 @@ def process_subject_condition(args):
                 else:
                     results[f"pli_mst_{measure}"] = np.nan
                     results[f"pli_mst_{measure}_valid_epochs"] = 0
+            
+            # Add the tracking metrics        
+            results["pli_mst_successful_epochs"] = len(pli_mst_values["degree"]) if pli_mst_values["degree"] else 0
+            results["pli_mst_total_epochs"] = len(epoch_files)
 
         if calc_power and power_values:
             for band_name in FREQUENCY_BANDS:
@@ -2246,6 +2347,7 @@ def process_subject_condition(args):
             "avg_aec": np.nan,
             "avg_apen": np.nan,
             "avg_sampen": np.nan,
+            "avg_lzc": np.nan,
             "n_epochs": 0,
             "used_epochs": "Error",
             "channel_names": [],
@@ -2291,6 +2393,8 @@ def process_subject_condition(args):
             ]:
                 error_result[f"pli_mst_{measure}"] = np.nan
                 error_result[f"pli_mst_{measure}_valid_epochs"] = 0
+            error_result["pli_mst_successful_epochs"] = 0
+            error_result["pli_mst_total_epochs"] = len(epoch_files)
 
         if calc_power:
             for band_name in FREQUENCY_BANDS:
@@ -2353,7 +2457,14 @@ def group_epochs_by_condition(folder_path, folder_ext):
                 continue
 
             # Check if file matches epoch pattern
-            if "_level_" in file and ("_Epoch_" in file or "_Epoch" in file):
+            # if "_level_" in file and ("_Epoch_" in file or "_Epoch" in file):
+            is_legacy_format = "_level_" in file
+            is_new_atlas_format = bool(
+                re.search(r"_(Source|Sensor)_(beamformer|sLORETA|eLORETA|dSPM)_(desikan|bna|aal2|aal3)_", file, re.IGNORECASE)
+                or re.search(r"_(Source|Sensor)_(desikan|bna|aal2|aal3)_(cortical|full)_", file, re.IGNORECASE)
+            )
+            
+            if (is_legacy_format or is_new_atlas_format) and ("_Epoch_" in file or "_Epoch" in file):
                 try:
                     file_info = parse_epoch_filename(file)
                     full_path = os.path.join(subdir_path, file)
@@ -2403,7 +2514,6 @@ def group_epochs_by_condition(folder_path, folder_ext):
 
 def process_all_subjects(
     grouped_files,
-    convert_ints_pe,
     invert,
     n_threads,
     calc_jpe,
@@ -2424,6 +2534,8 @@ def process_all_subjects(
     calc_apen=False,
     apen_m=1,
     apen_r=0.25,
+    calc_lzc=False,
+    lzc_threshold="median",
     calc_sv=False,
     sv_window=1000,
     save_matrices=False,
@@ -2476,7 +2588,6 @@ def process_all_subjects(
                     subject,
                     condition,
                     files_to_process,
-                    convert_ints_pe,
                     invert,
                     calc_jpe,
                     calc_pli,
@@ -2508,6 +2619,8 @@ def process_all_subjects(
                     welch_overlap,
                     calc_plt,
                     plt_threshold_ms,
+                    calc_lzc,
+                    lzc_threshold, 
                 )
             )
 
@@ -2603,6 +2716,8 @@ def save_results_to_excel(
     peak_max=None,
     calc_sampen=False,
     calc_apen=False,
+    calc_lzc=False,
+    lzc_threshold="median",
     calc_sv=False,
     save_channel_averages=False,
     concat_aecc=False,
@@ -2666,18 +2781,13 @@ def save_results_to_excel(
                     columns.append(f"{condition}_aec_mst_successful_epochs")
                     columns.append(f"{condition}_aec_mst_total_epochs")
 
-            # --- SampEn & ApEn ---
+            # --- SampEn, ApEn and LZC ---
             if calc_sampen:
                 columns.append(f"{condition}_avg_sampen")
             if calc_apen:
                 columns.append(f"{condition}_avg_apen")
-
-            # --- Power & Peak Frequency ---
-            def is_broadband_condition(condition):
-                if "broadband" not in FREQUENCY_BANDS:
-                    return False
-                pattern = FREQUENCY_BANDS["broadband"]["pattern"]
-                return bool(re.search(pattern, condition, re.IGNORECASE))
+            if calc_lzc:
+                columns.append(f"{condition}_avg_lzc")
 
             is_broadband_cond = is_broadband_condition(condition)
 
@@ -2732,8 +2842,10 @@ def save_results_to_excel(
                     ]
                     for mm in mst_measures:
                         row[f"{condition}_pli_mst_{mm}"] = data_for_condition.get(f"pli_mst_{mm}", np.nan)
-                    row[f"{condition}_pli_mst_successful_epochs"] = data_for_condition.get("pli_mst_degree_valid_epochs", np.nan)
+
+                    row[f"{condition}_pli_mst_successful_epochs"] = data_for_condition.get("pli_mst_successful_epochs", np.nan)
                     row[f"{condition}_pli_mst_total_epochs"] = data_for_condition.get("pli_mst_total_epochs", np.nan)
+
 
                 # AEC
                 if calc_aec:
@@ -2748,11 +2860,13 @@ def save_results_to_excel(
                         row[f"{condition}_aec_mst_successful_epochs"] = data_for_condition.get("aec_mst_successful_epochs", np.nan)
                         row[f"{condition}_aec_mst_total_epochs"] = data_for_condition.get("aec_mst_total_epochs", np.nan)
 
-                # SampEn & ApEn
+                # SampEn, ApEn and LZC
                 if calc_sampen:
                     row[f"{condition}_avg_sampen"] = data_for_condition.get("avg_sampen", np.nan)
                 if calc_apen:
                     row[f"{condition}_avg_apen"] = data_for_condition.get("avg_apen", np.nan)
+                if calc_lzc:
+                    row[f"{condition}_avg_lzc"] = data_for_condition.get("avg_lzc", np.nan)
 
                 # Power & Peak Frequency
                 is_broadband_cond = is_broadband_condition(condition)
@@ -2808,6 +2922,8 @@ def save_results_to_excel(
                 "Peak Frequency Range (Hz)",
                 "Sample Entropy Calculated",
                 "Approximate Entropy Calculated",
+                "Lempel-Ziv Complexity Calculated",
+                "LZC Binarization Threshold",
                 "Spectral Variability Calculated",
                 "Spectral Variability Window (ms)",
                 "Channel Averages Calculated",
@@ -2832,6 +2948,8 @@ def save_results_to_excel(
                 f"{(calc_peak and f'{peak_min}-{peak_max}') or 'N/A'}",
                 "Yes" if calc_sampen else "No",
                 "Yes" if calc_apen else "No",
+                "Yes" if calc_lzc else "No",
+                str(lzc_threshold) if calc_lzc else "N/A",
                 "Yes" if calc_sv else "No",
                 str(sv_window) if calc_sv else "N/A",
                 "Yes" if save_channel_averages else "No",
@@ -2909,7 +3027,9 @@ def save_results_to_excel(
 
         if metadata_rows:
             metadata_df = pd.DataFrame(metadata_rows)
-            desired_cols = ["subject", "condition", "n_epochs_available", "used_epochs", "n_channels", "channels"]
+            # desired_cols = ["subject", "condition", "n_epochs_available", "used_epochs", "n_channels", "channels"]
+            desired_cols = ["subject", "condition", "n_epochs_used", "used_epochs", "n_channels", "channels"]
+            
             existing_cols = [c for c in desired_cols if c in metadata_df.columns]
             metadata_df = metadata_df[existing_cols]
             
@@ -3113,7 +3233,6 @@ def main():
 
                 results = process_all_subjects(
                     grouped_files,
-                    convert_ints_pe=values["-CONVERT_INTS_PE-"],
                     invert=values["-INVERT-"],
                     n_threads=n_threads,
                     calc_jpe=values["-CALC_JPE-"],
@@ -3136,6 +3255,8 @@ def main():
                     calc_apen=values["-CALC_APEN-"],
                     apen_m=apen_m,
                     apen_r=apen_r,
+                    calc_lzc=values["-CALC_LZC-"],
+                    lzc_threshold=values["-LZC_THRESH-"],
                     calc_sv=values["-CALC_SV-"],
                     sv_window=sv_window,
                     save_matrices=save_matrices,
@@ -3175,6 +3296,8 @@ def main():
                             peak_max=peak_max,
                             calc_sampen=values["-CALC_SAMPEN-"],
                             calc_apen=values["-CALC_APEN-"],
+                            calc_lzc=values["-CALC_LZC-"],
+                            lzc_threshold=values["-LZC_THRESH-"],
                             calc_sv=values["-CALC_SV-"],
                             sv_window=sv_window if values["-CALC_SV-"] else None,
                             save_channel_averages=values["-SAVE_CHANNEL_AVERAGES-"],
@@ -3184,7 +3307,7 @@ def main():
                             welch_window_ms=welch_window_ms if psd_method == "welch" else None,
                             welch_overlap=welch_overlap if psd_method == "welch" else None,
                             calc_plt=calc_plt,
-                            plt_threshold_ms=plt_threshold_ms, # <--- PASSING THE NEW PARAMETER
+                            plt_threshold_ms=plt_threshold_ms,
                         )
                         # Save matrices if requested
                         matrices_saved = 0
@@ -3204,8 +3327,23 @@ def main():
                                         matrices = result["matrices"]
                                         current_channel_names = result["channel_names"]
 
-                                        # Extract level type from condition
-                                        level_type = "source" if "source" in condition.lower() else "sensor"
+                                        # Match method+atlas format or atlas-only format
+                                        method_atlas_match = re.search(
+                                            r"(source_(?:beamformer|sloreta|eloreta|dspm)_(?:desikan|bna|aal2|aal3)_(?:cortical|full))",
+                                            condition.lower(),
+                                        )
+                                        atlas_only_match = re.search(
+                                            r"(source_(?:desikan|bna|aal2|aal3)_(?:cortical|full))",
+                                            condition.lower(),
+                                        )
+                                        if method_atlas_match:
+                                            level_type = method_atlas_match.group(1)
+                                        elif atlas_only_match:
+                                            level_type = atlas_only_match.group(1)
+                                        elif "source" in condition.lower():
+                                            level_type = "source"
+                                        else:
+                                            level_type = "sensor"
 
                                         # Save regular connectivity matrices (Added "plt" here)
                                         if save_matrices:

@@ -16,7 +16,7 @@ f_size = 5  # font size filter frequency inputs
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
 
-EEG_version = "v4.4.5"
+EEG_version = "v4.5.0"
 
 # script run defaults
 settings["default_epoch_length"] = 8
@@ -29,7 +29,7 @@ settings["apply_output_filtering"] = 0
 settings["epoch_length"] = 0.0
 settings["apply_ica"] = 0
 settings["rerun"] = 0
-settings["apply_beamformer"] = 0
+settings["apply_source_recon"] = 0
 # settings["channels_to_be_dropped_selected"] = 0
 settings["nr_ica_components"] = 0
 settings["max_channels"] = 0
