@@ -18,3 +18,6 @@ Added calculation of Phase Lag Time (PLT) to the quantitative analysis script, s
 
 ## Version 4.4.1:
 Added an option to select a custom (filtering) frequency band in the GUI during setup of preprocessing. If left empty, this option does noting. The quantitative analysis module was expanded to include an option to limit the number of epochs used per participant. 
+
+## Version 4.5.0
+This version includes more options for source reconstructing the EEG during preprocessing. These now also include eLORETA, sLORETA, MNE and dSPM. In addition, this version included improved .pkl rerunning, inlcuding the option to easily select only several raw EEG files to rerun from a previously ran batch. At the same time, the raw EEG files used previously do not necessarily need to be in the same exact path as when initially running the batch since the user is now prompted to always reselect the raw EEG files via a file browser window. Finally, integer conversion prior to (J)PE calculation was removed since this was a legacy feature meant for comparison with BrainWave that was not used anymore in practice.
