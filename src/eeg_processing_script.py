@@ -35,7 +35,7 @@ sg.theme('DefaultNoMoreNagging')
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.5.0"
+EEG_version = "v4.5.1"
 
 # initial values
 progress_value1 = 20
@@ -748,6 +748,9 @@ def ask_source_recon_option(config):
         [sg.Checkbox("dSPM", key="-METHOD_DSPM-",
                      default="dSPM" in prev_methods,
                      background_color="white", enable_events=True)],
+        [sg.Checkbox("MNE", key="-METHOD_MNE-",
+                     default="MNE" in prev_methods,
+                     background_color="white", enable_events=True)],
         [sg.Text("", key="-METHOD_NOTE-", font=("Ubuntu Medium", 10),
                  text_color="gray", background_color="white", size=(60, 2))],
         [sg.Text("", size=(1, 1), background_color="white")],
@@ -779,7 +782,7 @@ def ask_source_recon_option(config):
         modal=True, use_custom_titlebar=True, font=font,
         background_color="white", location=(100, 100), finalize=True,
     )
- 
+     
     def _get_selected_methods(vals):
         methods = []
         if vals.get("-METHOD_BF-"):
@@ -790,11 +793,13 @@ def ask_source_recon_option(config):
             methods.append("eLORETA")
         if vals.get("-METHOD_DSPM-"):
             methods.append("dSPM")
+        if vals.get("-METHOD_MNE-"):
+            methods.append("MNE")
         return methods
  
     def _update_ui(win, methods):
         bf_on = "beamformer" in methods
-        mn_on = any(m in methods for m in ("sLORETA", "eLORETA", "dSPM"))
+        mn_on = any(m in methods for m in ("sLORETA", "eLORETA", "dSPM", "MNE"))
         for atlas_key in settings["beamformer_atlas_order"]:
             win[f"-ATLAS_{atlas_key.upper()}-"].update(disabled=not bf_on)
         win["-CORTICAL_ONLY-"].update(disabled=not bf_on)
@@ -3855,6 +3860,5 @@ while True:  # @noloop remove
         window["-FILE_INFO-"].update(msg + "\n", append=True)
         msg = "Processing complete \n"
         window["-RUN_INFO-"].update(msg + "\n", append=True)
-
 
 window.close()
