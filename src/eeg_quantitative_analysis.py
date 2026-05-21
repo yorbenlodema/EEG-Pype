@@ -1574,10 +1574,11 @@ def parse_epoch_filename(filename):
 
     # Try new method+atlas source format first: _Source_{method}_{atlas}_{region}_
     method_atlas_match = re.search(
-        r"_(Source)_(beamformer|sLORETA|eLORETA|dSPM)_(desikan|bna|aal2|aal3)_(cortical|full)_",
+        r"_(Source)_(beamformer|sLORETA|eLORETA|dSPM|MNE)_(desikan|bna|aal2|aal3)_(cortical|full)_",
         filename,
         re.IGNORECASE,
     )
+    
     # Also try atlas-only format (no method): _Source_{atlas}_{region}_
     atlas_match = re.search(
         r"_(Source)_(desikan|bna|aal2|aal3)_(cortical|full)_",
@@ -2109,9 +2110,9 @@ def group_epochs_by_condition(folder_path, folder_ext):
                 continue
 
             # Check if file matches epoch pattern
-            is_legacy_format = "_level_" in file
+            is_legacy_format = "_level_" in file            
             is_new_atlas_format = bool(
-                re.search(r"_(Source|Sensor)_(beamformer|sLORETA|eLORETA|dSPM)_(desikan|bna|aal2|aal3)_", file, re.IGNORECASE)
+                re.search(r"_(Source|Sensor)_(beamformer|sLORETA|eLORETA|dSPM|MNE)_(desikan|bna|aal2|aal3)_", file, re.IGNORECASE)
                 or re.search(r"_(Source|Sensor)_(desikan|bna|aal2|aal3)_(cortical|full)_", file, re.IGNORECASE)
             )
             
