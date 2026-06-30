@@ -23,7 +23,7 @@ from scipy.signal import hilbert
 from scipy.sparse.csgraph import minimum_spanning_tree
 import FreeSimpleGUI as sg
 
-EEG_version = "v4.5.1"
+EEG_version = "v4.5.2"
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +138,71 @@ def setup_logging(folder_path):
 
     return log_filename
 
+def compute_resolution_readout(values):
+    """Build a human-readable frequency-resolution summary for the selected PSD method.
+
+    Uses the sampling rate and the manually entered epoch length to derive bin
+    spacing, and for multitaper also the resolution bandwidth and implied taper
+    count. Never raises — returns a hint string if inputs are incomplete.
+    """
+    method = values.get("-PSD_METHOD-", "Multitaper").lower()
+
+    try:
+        fs = float(values.get("-POWER_FS-", ""))
+        if fs <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return "Frequency resolution: enter a valid sampling rate"
+
+    try:
+        epoch_sec = float(values.get("-EPOCH_LENGTH-", ""))
+        if epoch_sec <= 0:
+            raise ValueError
+        n_samples = int(round(epoch_sec * fs))
+    except (ValueError, TypeError):
+        epoch_sec = None
+        n_samples = None
+
+    if method == "welch":
+        try:
+            win_ms = float(values.get("-WELCH_WINDOW-", ""))
+            if win_ms <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            return "Frequency resolution: enter a valid Welch window"
+        return f"Welch bin spacing: {1000.0 / win_ms:.3f} Hz  (= 1000 / {win_ms:.0f} ms)"
+
+    if method == "fft":
+        if epoch_sec is None:
+            return "FFT bin spacing: enter epoch length to compute"
+        return (f"FFT bin spacing: {1.0 / epoch_sec:.3f} Hz  "
+                f"(= 1 / {epoch_sec:g} s, fixed by epoch length)")
+
+    # Multitaper
+    if epoch_sec is None:
+        return "Multitaper: enter epoch length to compute resolution"
+    bin_hz = fs / n_samples
+    bw_raw = values.get("-MT_BANDWIDTH-", "").strip()
+    if bw_raw == "" or bw_raw.lower() == "auto":
+        bandwidth = 8.0 * fs / n_samples  # MNE default
+        bw_label = f"{bandwidth:.3f} Hz (auto)"
+    else:
+        try:
+            bandwidth = float(bw_raw)
+            if bandwidth <= 0:
+                raise ValueError
+            bw_label = f"{bandwidth:.3f} Hz"
+        except (ValueError, TypeError):
+            return "Multitaper: enter a valid bandwidth (or 'Auto')"
+
+    n_tapers = int(np.floor(epoch_sec * bandwidth - 1))
+    taper_note = f"{n_tapers} taper(s)"
+    if n_tapers < 1:
+        taper_note += " — TOO LOW, will fail"
+    elif n_tapers < 3:
+        taper_note += " — low, little variance benefit"
+    return (f"Multitaper bandwidth {bw_label}, smoothing ±{bandwidth / 2:.3f} Hz; "
+            f"bin spacing {bin_hz:.3f} Hz; ~{taper_note}")
 
 def create_gui():
     """Create the GUI layout for EEG analysis settings (Pipeline Layout)."""
@@ -225,48 +290,52 @@ def create_gui():
 
     # --- Step 2: Analysis Configuration ---
     step_2_layout = [
-        [sg.Text("Step 2: Analysis", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],
+        [sg.Text("Step 2: Analysis", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],        
         [
             sg.Frame(
                 "Spectral Analysis",
                 [
-                    [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG), sg.Input(key="-POWER_FS-", size=(8, 1))],
+                    [sg.Text("Sampling rate (Hz):", background_color=MAIN_BG),
+                     sg.Input(key="-POWER_FS-", size=(8, 1), enable_events=True)],
+                    [sg.Text("Epoch length (s):", background_color=MAIN_BG),
+                     sg.Input(key="-EPOCH_LENGTH-", size=(8, 1), enable_events=True),
+                     sg.Text("(for fr. resolution readout)", background_color=MAIN_BG,
+                             font=("Helvetica", 9, "italic"))],
                     [
                         sg.Text("PSD Method:", background_color=MAIN_BG),
                         sg.Combo(
-                            ["Multitaper", "Welch", "FFT"], default_value="Multitaper", key="-PSD_METHOD-", size=(10, 1)
+                            ["Multitaper", "Welch", "FFT"], default_value="Multitaper",
+                            key="-PSD_METHOD-", size=(10, 1), enable_events=True
                         ),
+                    ],                    
+                    [sg.HorizontalSeparator(color="#D0D0D0")],
+                    [
+                        sg.Text("Welch window (ms):", background_color=MAIN_BG, size=(28, 1)),
+                        sg.Input("1000", key="-WELCH_WINDOW-", size=(8, 1), enable_events=True),
                     ],
                     [
-                        sg.Text(
-                            "Welch parameters (if selected):",
-                            background_color=MAIN_BG,
-                            font=("Helvetica", 9, "italic"),
-                        )
+                        sg.Text("Welch overlap (%):", background_color=MAIN_BG, size=(28, 1)),
+                        sg.Input("50", key="-WELCH_OVERLAP-", size=(8, 1)),
                     ],
                     [
-                        sg.Text("Window (ms):", background_color=MAIN_BG),
-                        sg.Input("1000", key="-WELCH_WINDOW-", size=(6, 1)),
-                        sg.Text("Overlap %:", background_color=MAIN_BG),
-                        sg.Input("50", key="-WELCH_OVERLAP-", size=(4, 1)),
+                        sg.Text("Multitaper bandwidth (Hz):", background_color=MAIN_BG, size=(28, 1)),
+                        sg.Input("Auto", key="-MT_BANDWIDTH-", size=(8, 1), enable_events=True),
                     ],
+                    [
+                        sg.Text("", key="-FREQ_RES-", background_color=MAIN_BG,
+                                font=("Helvetica", 10, "italic"), size=(46, 3)),
+                    ],
+                    [sg.HorizontalSeparator(color="#D0D0D0")],
+                    
                     [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
-                    [
-                        sg.Checkbox(
-                            "Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG
-                        )
-                    ],
+                    [sg.Checkbox("Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG)],
                     [
                         sg.Text("Freq range:", background_color=MAIN_BG),
                         sg.Input("4", key="-PEAK_MIN-", size=(3, 1)),
                         sg.Text("-", background_color=MAIN_BG),
                         sg.Input("13", key="-PEAK_MAX-", size=(3, 1)),
                     ],
-                    [
-                        sg.Checkbox(
-                            "Calc. spectral variability", key="-CALC_SV-", default=False, background_color=MAIN_BG
-                        )
-                    ],
+                    [sg.Checkbox("Calc. spectral variability", key="-CALC_SV-", default=False, background_color=MAIN_BG)],
                     [
                         sg.Text("Window (ms):", background_color=MAIN_BG),
                         sg.Input("2000", key="-SV_WINDOW-", size=(6, 1)),
@@ -275,6 +344,8 @@ def create_gui():
                 background_color=MAIN_BG, expand_x=True
             )
         ],
+        
+        
         [
             sg.Frame(
                 "Connectivity",
@@ -409,9 +480,28 @@ def create_gui():
                 background_color=MAIN_BG, expand_x=True
             )
         ],
+        
+        [
+            sg.Frame(
+                "PSD Export",
+                [
+                    [sg.Checkbox("Save averaged PSD (epochs + ch/region)", key="-SAVE_PSD_AVG-", default=False, background_color=MAIN_BG)],
+                    [sg.Checkbox("Save per-channel/region PSD (epoch-avg)", key="-SAVE_PSD_PERCHANNEL-", default=False, background_color=MAIN_BG)],
+                    [sg.Checkbox("Save PSD plots (PNG, MNE-style)", key="-SAVE_PSD_PLOTS-", default=False, background_color=MAIN_BG)],
+                    [
+                        sg.Text("PSD folder:", background_color=MAIN_BG),
+                        sg.Input("psd_output", key="-PSD_FOLDER-", size=(25, 1)),
+                    ],
+                    [sg.Text("(PSD uses broadband epochs + sampling rate)",
+                             background_color=MAIN_BG, font=("Helvetica", 10, "italic"))],
+                ],
+                background_color=MAIN_BG, expand_x=True
+            )
+        ],
         [
             sg.Frame(
                 "Progress & Execution",
+        
                 [
                     [
                         sg.Button(
@@ -642,10 +732,11 @@ def calculate_PSD(
     # Initialize return dictionary
     result = {}
 
-    # Calculate PSD based on method
+    # Calculate PSD based on method            
     if method == "multitaper":
         try:
-            frequencies, psd = _calculate_multitaper_psd(data, fs)
+            bandwidth = kwargs.get("bandwidth", None)
+            frequencies, psd = _calculate_multitaper_psd(data, fs, bandwidth=bandwidth)
             result["frequencies"] = frequencies
             result["psd"] = psd
 
@@ -747,41 +838,159 @@ def _calculate_welch_psd(
     return frequencies, psd
 
 def _calculate_fft_psd(data: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
+    """Single-segment PSD via a Hann-windowed FFT over the whole epoch.
+
+    Uses the same one-sided density scaling as scipy.signal.welch so absolute
+    power is consistent across FFT, Welch and multitaper: every bin except DC
+    (and Nyquist, when present) is doubled to account for the discarded
+    negative-frequency half.
+    """
     n_samples = data.shape[0]
     n_channels = data.shape[1]
 
-    # Calculate frequency axis
-    frequencies = np.fft.rfftfreq(n_samples, d=1 / fs)
+    window = signal.windows.hann(n_samples)
+    # scipy-style density normalisation: 1 / (fs * sum(window**2))
+    scale = 1.0 / (fs * np.sum(window ** 2))
 
-    # Initialize PSD array
+    frequencies = np.fft.rfftfreq(n_samples, d=1 / fs)
     psd = np.zeros((len(frequencies), n_channels))
 
-    # Calculate PSD for each channel
     for ch in range(n_channels):
-        # Apply Hanning window from scipy.signal.windows
-        windowed_data = data[:, ch] * signal.windows.hann(n_samples)
-
-        # Calculate FFT
-        fft_data = np.fft.rfft(windowed_data)
-
-        # Calculate power spectral density
-        window_correction = np.mean(signal.windows.hann(n_samples) ** 2)
-        psd[:, ch] = (np.abs(fft_data) ** 2) / (fs * n_samples * window_correction)
+        fft_data = np.fft.rfft(data[:, ch] * window)
+        ch_psd = (np.abs(fft_data) ** 2) * scale
+        # One-sided correction: double all but DC and (if present) Nyquist.
+        ch_psd[1:] *= 2
+        if n_samples % 2 == 0:
+            ch_psd[-1] /= 2  # Nyquist bin is unique; undo its doubling
+        psd[:, ch] = ch_psd
 
     return frequencies, psd
 
-def _calculate_multitaper_psd(data: np.ndarray, fs: float):
-    """Calculate PSD using MNE's multitaper implementation."""
+def _calculate_multitaper_psd(data: np.ndarray, fs: float, bandwidth=None):
+    """Calculate PSD using MNE's multitaper implementation.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Time series data (samples x channels).
+    fs : float
+        Sampling frequency in Hz.
+    bandwidth : float or None
+        Full multitaper resolution bandwidth in Hz (frequencies within
+        ± bandwidth/2 are smoothed together). None uses MNE's default of
+        8 * fs / n_samples.
+    """
+    fmax = min(60.0, fs / 2.0)
     psds, freqs = mne.time_frequency.psd_array_multitaper(
         data.T,
         sfreq=fs,
         fmin=0,
-        fmax=60,
+        fmax=fmax,
+        bandwidth=bandwidth,
         n_jobs=1,
         verbose=False,
     )
-
     return freqs, psds.T
+
+def save_psd_outputs(
+    mean_psd,
+    frequencies,
+    channel_names,
+    subject,
+    condition,
+    freq_band,
+    level_type,
+    psd_folder,
+    save_avg=False,
+    save_perchannel=False,
+    save_plots=False,
+):
+    """Write the epoch-averaged PSD to CSV and/or PNG (broadband conditions only).
+
+    Parameters
+    ----------
+    mean_psd : np.ndarray
+        Epoch-averaged PSD, shape (n_freqs x n_channels).
+    frequencies : np.ndarray
+        Frequency axis (length n_freqs).
+    channel_names : list[str] | None
+        Channel / region labels; generic names are generated if missing.
+    psd_folder : str
+        Base output folder. A per-subject subfolder is created inside it.
+    save_avg : bool
+        Write the channel-averaged PSD (single curve) to CSV.
+    save_perchannel : bool
+        Write the per-channel PSD (frequencies x channels) to CSV.
+    save_plots : bool
+        Also write MNE-style PNG plots (power in dB vs frequency).
+    """
+    if mean_psd is None or frequencies is None:
+        return
+
+    n_channels = mean_psd.shape[1]
+    if not channel_names or len(channel_names) != n_channels:
+        channel_names = [f"Channel_{i + 1}" for i in range(n_channels)]
+
+    global_psd = np.nanmean(mean_psd, axis=1)  # channel-averaged curve
+
+    subject_folder = os.path.join(psd_folder, subject)
+    os.makedirs(subject_folder, exist_ok=True)
+    stem = f"{subject}_{level_type}_{freq_band}_psd"
+
+    if save_avg:
+        pd.DataFrame({"frequency_Hz": frequencies, "psd": global_psd}).to_csv(
+            os.path.join(subject_folder, f"{stem}_global_avg.csv"),
+            index=False, float_format="%.6e",
+        )
+
+    if save_perchannel:
+        df_pc = pd.DataFrame(mean_psd, index=frequencies, columns=channel_names)
+        df_pc.index.name = "frequency_Hz"
+        df_pc.to_csv(
+            os.path.join(subject_folder, f"{stem}_per_channel.csv"),
+            float_format="%.6e",
+        )
+
+    if save_plots:
+        try:
+            _plot_psd(frequencies, mean_psd, global_psd, subject_folder, stem,
+                      title=f"{subject} — {condition}")
+        except Exception:
+            logger.exception(f"Error plotting PSD for {subject} - {condition}")
+
+
+def _plot_psd(frequencies, mean_psd, global_psd, out_folder, stem, title=""):
+    """Render two MNE-style PSD figures (power in dB vs frequency) as PNGs."""
+    import matplotlib
+    matplotlib.use("Agg")  # headless / multiprocessing-safe backend
+    import matplotlib.pyplot as plt
+
+    eps = 1e-20  # guard against log10(0)
+
+    # Per-channel: faint per-channel traces + bold channel mean.
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(frequencies, 10 * np.log10(mean_psd + eps),
+            color="0.7", linewidth=0.5, alpha=0.6)
+    ax.plot(frequencies, 10 * np.log10(global_psd + eps),
+            color="C0", linewidth=2.0, label="Mean")
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Power (dB)")
+    ax.set_title(f"{title} — per channel")
+    ax.legend(loc="upper right")
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_folder, f"{stem}_per_channel.png"), dpi=300)
+    plt.close(fig)
+
+    # Channel-averaged: single mean curve.
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(frequencies, 10 * np.log10(global_psd + eps),
+            color="C0", linewidth=2.0)
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Power (dB)")
+    ax.set_title(f"{title} — channel-averaged")
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_folder, f"{stem}_global_avg.png"), dpi=300)
+    plt.close(fig)
 
 def calculate_sampen_for_channels(data, m=2):
     """
@@ -972,7 +1181,7 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                 )
 
                 # Create mask for broadband total power
-                total_mask = (f >= broadband_min) & (f <= broadband_max)
+                total_mask = (f >= broadband_min) & (f < broadband_max)
                 if not np.any(total_mask):
                     logger.exception("No frequencies found in the broadband range.")
                     for band_name in cv_values:  # noqa: PLC0206
@@ -1121,7 +1330,7 @@ def calculate_power_bands(frequencies, psd):
         - channel_powers: dict with channel-level arrays (one entry per band)
     """
     broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
-    broadband_mask = (frequencies >= broadband_min) & (frequencies <= broadband_max)
+    broadband_mask = (frequencies >= broadband_min) & (frequencies < broadband_max)
 
     # Compute total power in the broadband range
     total_power = np.sum(psd[broadband_mask, :], axis=0)  # shape: (n_channels,)
@@ -1134,7 +1343,7 @@ def calculate_power_bands(frequencies, psd):
     for band_name, band_info in FREQUENCY_BANDS.items():
         # Calculate for all bands including 'broadband'
         fmin, fmax = band_info["range"]
-        band_mask = (frequencies >= fmin) & (frequencies <= fmax)
+        band_mask = (frequencies >= fmin) & (frequencies < fmax)
 
         # Compute absolute power in this band
         abs_power = np.sum(psd[band_mask, :], axis=0)
@@ -1632,8 +1841,10 @@ def process_subject_condition(args):
         power_fs, calc_peak, peak_min, peak_max, calc_sampen, sampen_m, calc_apen,
         apen_m, apen_r, calc_sv, sv_window, save_matrices, save_mst,
         save_channel_averages, concat_aecc, has_headers, psd_method,
-        welch_window_ms, welch_overlap, calc_plt, plt_threshold_ms,
+        welch_window_ms, welch_overlap, calc_plt, plt_threshold_ms,    
         calc_lzc, lzc_threshold, calc_plt_mst, matrix_folders, save_epoch_metrics,
+        mt_bandwidth,
+        save_psd_avg, save_psd_perchannel, save_psd_plots, psd_folder,
     ) = args
 
     MST_MEASURES = ["degree", "eccentr", "betweenness", "kappa", "r",
@@ -1649,6 +1860,12 @@ def process_subject_condition(args):
         apen_values, sampen_values, lzc_values = [], [], []
         sv_values = {}
         channel_names = None
+        
+        # PSD export accumulators (running mean over broadband epochs)
+        save_psd = save_psd_avg or save_psd_perchannel or save_psd_plots
+        psd_sum = None
+        psd_count = 0
+        psd_frequencies = None
 
         successful_mst_epochs = 0
         epoch_level_results = []
@@ -1661,7 +1878,7 @@ def process_subject_condition(args):
         per_epoch_work = (
             calc_jpe or calc_pli or calc_plt or calc_sampen or calc_apen or calc_lzc
             or (calc_aec and not concat_aecc)
-            or ((calc_power or calc_peak) and is_broadband_condition(condition))
+            or ((calc_power or calc_peak or save_psd) and is_broadband_condition(condition))
         )
 
         for i, file_path in enumerate(epoch_files):
@@ -1695,10 +1912,18 @@ def process_subject_condition(args):
                 freq_band = file_info["freq_band"]
 
                 # --- Spectral (Power / Peak) ---
-                need_spectral = (calc_power or calc_peak) and is_broadband_condition(condition)
+                need_spectral = (calc_power or calc_peak or save_psd) and is_broadband_condition(condition)
                 if need_spectral:
                     try:
-                        psd_kwargs = {"window_length_ms": welch_window_ms, "overlap_percent": welch_overlap} if psd_method == "welch" else {}
+                        # psd_kwargs = {"window_length_ms": welch_window_ms, "overlap_percent": welch_overlap} if psd_method == "welch" else {}
+                        
+                        if psd_method == "welch":
+                            psd_kwargs = {"window_length_ms": welch_window_ms, "overlap_percent": welch_overlap}
+                        elif psd_method == "multitaper":
+                            psd_kwargs = {"bandwidth": mt_bandwidth}
+                        else:
+                            psd_kwargs = {}
+                        
                         spectral_data = calculate_PSD(data=data_values, fs=power_fs, method=psd_method, **psd_kwargs)
 
                         if calc_power:
@@ -1719,7 +1944,20 @@ def process_subject_condition(args):
                             power_values["channels_without_peak"].append(np.sum(np.isnan(peak_freqs)))
                             if save_channel_averages:
                                 for ch in range(len(channel_names)):
-                                    channel_results[channel_names[ch]]["peak_frequency"].append(peak_freqs[ch])
+                                    channel_results[channel_names[ch]]["peak_frequency"].append(peak_freqs[ch])        
+                                    
+                        if save_psd:
+                            cur_psd = spectral_data["psd"]
+                            if psd_sum is None:
+                                psd_sum = cur_psd.astype(np.float64).copy()
+                                psd_frequencies = spectral_data["frequencies"]
+                                psd_count = 1
+                            elif cur_psd.shape == psd_sum.shape:
+                                psd_sum += cur_psd
+                                psd_count += 1
+                            else:
+                                logger.warning(f"PSD shape mismatch in {epoch_id}; excluded from PSD average.")
+
                         del spectral_data
                     except Exception:
                         logger.exception(f"Error in spectral calculations for {epoch_id}")
@@ -1957,6 +2195,27 @@ def process_subject_condition(args):
             except Exception:
                 logger.exception("Error in spectral variability calculation")
 
+        # --- Save PSD export (epoch-averaged, broadband only) ---
+        if save_psd and is_broadband_condition(condition) and psd_sum is not None and psd_count > 0:
+            try:
+                mean_psd = psd_sum / psd_count
+                psd_info = parse_epoch_filename(os.path.basename(epoch_files[0]))
+                save_psd_outputs(
+                    mean_psd,
+                    psd_frequencies,
+                    channel_names,
+                    subject,
+                    condition,
+                    psd_info["freq_band"],
+                    psd_info["level_detail"],
+                    psd_folder,
+                    save_avg=save_psd_avg,
+                    save_perchannel=save_psd_perchannel,
+                    save_plots=save_psd_plots,
+                )
+            except Exception:
+                logger.exception("Error saving PSD export")
+
         # --- Channel-level averages across epochs ---
         channel_averages = None
         if save_channel_averages and channel_names:
@@ -2027,7 +2286,9 @@ def process_all_subjects(
     save_mst=False, save_channel_averages=False, concat_aecc=False, has_headers=True, 
     psd_method="multitaper", welch_window_ms=1000, welch_overlap=50, calc_plt=False, 
     plt_threshold_ms=30, calc_plt_mst=False, limit_epochs=False, max_epochs=5, 
-    random_seed=111, progress_callback=None, matrix_folders=None, save_epoch_metrics=True
+    random_seed=111, progress_callback=None, matrix_folders=None, save_epoch_metrics=True,
+    mt_bandwidth=None,
+    save_psd_avg=False, save_psd_perchannel=False, save_psd_plots=False, psd_folder=None,
 ):
     process_args = []
     
@@ -2048,6 +2309,8 @@ def process_all_subjects(
                 save_channel_averages, concat_aecc, has_headers, psd_method,
                 welch_window_ms, welch_overlap, calc_plt, plt_threshold_ms,
                 calc_lzc, lzc_threshold, calc_plt_mst, matrix_folders, save_epoch_metrics,
+                mt_bandwidth,
+                save_psd_avg, save_psd_perchannel, save_psd_plots, psd_folder,
             ))
 
     total_tasks = len(process_args)
@@ -2195,7 +2458,11 @@ def save_results_to_excel(
     psd_method="multitaper",
     welch_window_ms=None,
     welch_overlap=None,
+    mt_bandwidth=None,
     plt_threshold_ms=None,
+    save_psd_avg=False,
+    save_psd_perchannel=False,
+    save_psd_plots=False,
 ):
     """
     Save results to Excel with organized columns by condition.
@@ -2402,6 +2669,7 @@ def save_results_to_excel(
                 "PSD Method",
                 "Welch Window Length (ms)",
                 "Welch Overlap (%)",
+                "Multitaper Bandwidth (Hz)",
                 "Peak Frequency Analysis",
                 "Peak Frequency Range (Hz)",
                 "Sample Entropy Calculated",
@@ -2412,6 +2680,9 @@ def save_results_to_excel(
                 "Spectral Variability Window (ms)",
                 "Channel Averages Calculated",
                 "Channel Names Source",
+                "PSD Averaged CSV Saved",
+                "PSD Per-Channel CSV Saved",
+                "PSD Plots Saved",
             ],
             "Value": [
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -2429,6 +2700,8 @@ def save_results_to_excel(
                 psd_method,
                 str(welch_window_ms) if psd_method == "welch" else "N/A",
                 str(welch_overlap) if psd_method == "welch" else "N/A",
+                ("Auto (8 x sfreq/n_samples)" if mt_bandwidth is None else str(mt_bandwidth))
+                    if psd_method == "multitaper" else "N/A",
                 "Yes" if calc_peak else "No",
                 f"{peak_min}-{peak_max}" if calc_peak else "N/A",
                 "Yes" if calc_sampen else "No",
@@ -2439,6 +2712,9 @@ def save_results_to_excel(
                 str(sv_window) if calc_sv else "N/A",
                 "Yes" if save_channel_averages else "No",
                 "File Headers" if has_headers else "Auto-generated",
+                "Yes" if save_psd_avg else "No",
+                "Yes" if save_psd_perchannel else "No",
+                "Yes" if save_psd_plots else "No",
             ],
         }
 
@@ -2549,20 +2825,6 @@ def save_results_to_excel(
     logger.info(f"Results saved to: {output_path}")
     print(f"\nResults saved to {output_path}")
 
-# def main():
-#     """Run the GUI and process EEG data analysis."""
-#     window = create_gui()
-
-#     while True:
-#         event, values = window.read()
-
-#         if event in (sg.WIN_CLOSED, "Exit"):
-#             break
-
-#         if event == "-PSD_METHOD-":  # When PSD method changes
-#             window.refresh()
-
-
 def main():
     """
     Main entry point for the EEG-Pype quantitative analysis GUI.
@@ -2570,7 +2832,13 @@ def main():
     Handles the event loop, thorough parameter validation, directory creation, 
     multiprocessing execution, and final result compilation.
     """
+    
     window = create_gui()
+
+    # Prime the live frequency-resolution readout with the default field values.
+    initial_event, initial_values = window.read(timeout=0)
+    if initial_values is not None:
+        window["-FREQ_RES-"].update(compute_resolution_readout(initial_values))
 
     # --- GUI Event Loop ---
     while True:
@@ -2579,7 +2847,9 @@ def main():
         if event in (sg.WIN_CLOSED, "Exit"):
             break
 
-        if event == "-PSD_METHOD-":  # Refresh UI when PSD method changes
+        # Live-update the frequency-resolution readout when any relevant field changes.
+        if event in ("-PSD_METHOD-", "-POWER_FS-", "-EPOCH_LENGTH-", "-WELCH_WINDOW-", "-MT_BANDWIDTH-"):
+            window["-FREQ_RES-"].update(compute_resolution_readout(values))
             window.refresh()
 
         if event == "Process":
@@ -2624,6 +2894,16 @@ def main():
             save_mst = values["-SAVE_MST-"]
             mst_folder = values["-MST_FOLDER-"]
             save_epoch_metrics = values.get("-SAVE_EPOCH_METRICS-", True)
+            
+            # PSD Export Configuration
+            save_psd_avg = values["-SAVE_PSD_AVG-"]
+            save_psd_perchannel = values["-SAVE_PSD_PERCHANNEL-"]
+            save_psd_plots = values["-SAVE_PSD_PLOTS-"]
+            psd_folder_name = values["-PSD_FOLDER-"].strip()
+            save_psd_any = save_psd_avg or save_psd_perchannel or save_psd_plots
+            if save_psd_any and not psd_folder_name:
+                sg.popup_error("Please specify a folder name for saving PSD output.")
+                continue
 
             if save_matrices and not matrix_folder.strip():
                 sg.popup_error("Please specify a folder name for saving connectivity matrices.")
@@ -2659,11 +2939,51 @@ def main():
                         raise ValueError("Welch window length must be greater than 0")
                     if not 0 <= welch_overlap <= 100:
                         raise ValueError("Welch overlap must be between 0 and 100")
+                
                 except ValueError:
-                    sg.popup_error("Invalid Welch parameters.")
-                    continue
+                        sg.popup_error("Invalid Welch parameters.")
+                        continue
+
+            # Multitaper bandwidth (Hz). "Auto"/blank -> None (MNE default).
+            mt_bandwidth = None
+            if psd_method == "multitaper":
+                bw_raw = values["-MT_BANDWIDTH-"].strip()
+                if bw_raw and bw_raw.lower() != "auto":
+                    try:
+                        mt_bandwidth = float(bw_raw)
+                        if mt_bandwidth <= 0:
+                            raise ValueError("Bandwidth must be positive")
+                    except ValueError:
+                        sg.popup_error("Invalid multitaper bandwidth. Use a positive number or 'Auto'.")
+                        continue
+
+                # Guardrail: check implied taper count against the entered epoch length.
+                if mt_bandwidth is not None and (values["-CALC_POWER-"] or values["-CALC_PEAK-"]
+                                 or save_psd_avg or save_psd_perchannel or save_psd_plots):
+                    epoch_raw = values["-EPOCH_LENGTH-"].strip()
+                    if epoch_raw:
+                        try:
+                            epoch_sec = float(epoch_raw)
+                            implied_tapers = int(math.floor(epoch_sec * mt_bandwidth - 1))
+                            if implied_tapers < 1:
+                                if sg.popup_yes_no(
+                                    f"Bandwidth {mt_bandwidth} Hz with epoch length {epoch_sec} s "
+                                    f"yields {implied_tapers} tapers — multitaper will likely fail.\n\n"
+                                    "Proceed anyway?",
+                                    title="Bandwidth too small",
+                                ) != "Yes":
+                                    continue
+                            elif implied_tapers < 3:
+                                logger.warning(
+                                    f"Multitaper bandwidth {mt_bandwidth} Hz with epoch length "
+                                    f"{epoch_sec} s yields only {implied_tapers} taper(s)."
+                                )
+                        except ValueError:
+                            pass  # Non-critical; skip guardrail if epoch length is unparseable
 
             power_fs = 256
+            
+            
             try:
                 power_fs = float(values["-POWER_FS-"])
                 if power_fs <= 0:
@@ -2752,6 +3072,12 @@ def main():
                     folder_path, matrix_folder, mst_folder if save_mst else None
                 )
                 logger.info("Initialized output directories for per-epoch matrix saving.")
+                
+            psd_folder = None
+            if save_psd_any:
+                psd_folder = os.path.join(folder_path, psd_folder_name)
+                os.makedirs(psd_folder, exist_ok=True)
+                logger.info(f"PSD export directory ready: {psd_folder}")
 
             def update_progress(value):
                 window["-PROGRESS-"].update(value)
@@ -2794,6 +3120,7 @@ def main():
                     psd_method=psd_method,
                     welch_window_ms=welch_window_ms,
                     welch_overlap=welch_overlap,
+                    mt_bandwidth=mt_bandwidth,
                     calc_plt=calc_plt,
                     plt_threshold_ms=plt_threshold_ms,
                     calc_plt_mst=values["-CALC_PLT_MST-"],
@@ -2802,7 +3129,11 @@ def main():
                     max_epochs=max_epochs,
                     random_seed=random_seed,
                     matrix_folders=matrix_folders,        # Routes paths to workers
-                    save_epoch_metrics=save_epoch_metrics # Tells workers to collect row data
+                    save_epoch_metrics=save_epoch_metrics, # Tells workers to collect row data
+                    save_psd_avg=save_psd_avg,
+                    save_psd_perchannel=save_psd_perchannel,
+                    save_psd_plots=save_psd_plots,
+                    psd_folder=psd_folder,
                 )
 
                 # --- 5. Export Results ---
@@ -2840,9 +3171,13 @@ def main():
                             psd_method=psd_method,
                             welch_window_ms=welch_window_ms,
                             welch_overlap=welch_overlap,
+                            mt_bandwidth=mt_bandwidth,
                             calc_plt=calc_plt,
                             calc_plt_mst=values["-CALC_PLT_MST-"],
                             plt_threshold_ms=plt_threshold_ms,
+                            save_psd_avg=save_psd_avg,
+                            save_psd_perchannel=save_psd_perchannel,
+                            save_psd_plots=save_psd_plots,
                         )
 
                         # Generate dynamic success summary
