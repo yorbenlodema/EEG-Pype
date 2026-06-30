@@ -16,7 +16,7 @@ f_size = 5  # font size filter frequency inputs
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
 
-EEG_version = "v4.5.1"
+EEG_version = "v4.5.2"
 
 # script run defaults
 settings["default_epoch_length"] = 8
@@ -213,8 +213,26 @@ settings["input_file_patterns", "tooltip"] = (
 )
 
 # Legacy compatibility mappings (for old config files)
-# Maps old-style keys to new montage names
+# Maps old-style keys to new montage names.
+# Two generations are supported:
+#   • Terse pattern strings (e.g. ".edf_10-20") — oldest configs
+#   • ("montage"/"input_file_pattern", label) tuples — later configs
 settings["legacy_montage_map"] = {
+    # --- Oldest generation: terse pattern strings ---
+    ".edf_10-20": "standard_1020",
+    ".txt_10-20": "standard_1020",
+    ".bdf_32": "biosemi32",
+    ".bdf_64": "biosemi64",
+    ".bdf_128": "biosemi128",
+    ".edf_bio32": "biosemi32",
+    ".edf_bio64": "biosemi64",
+    ".edf_bio128": "biosemi128",
+    ".edf_GSN-Hydrocel_64": "GSN-HydroCel-64_1.0",
+    ".txt_bio32": "biosemi32",
+    ".txt_bio64": "biosemi64",
+    ".txt_MEG": "MEG",
+
+    # --- Later generation: tuple keys ---
     ("montage", "Use Native Coordinates (Auto)"): "native",
     ("montage", "Force Standard 10-20 Layout"): "standard_1020",
     ("montage", "Force Standard 10-05 Layout"): "standard_1005",

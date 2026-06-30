@@ -35,7 +35,7 @@ sg.theme('DefaultNoMoreNagging')
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.5.1"
+EEG_version = "v4.5.2"
 
 # initial values
 progress_value1 = 20
@@ -147,6 +147,13 @@ def load_config(fn):
         # Old configs only had beamformer
         cfg["source_methods"] = ["beamformer"]
         cfg["source_method"] = "beamformer"
+        
+    # Migrate single filtering flag → three independent save toggles
+    if "save_unfiltered" not in cfg:
+        legacy = bool(cfg.get("apply_output_filtering", 0))
+        cfg["save_unfiltered"]  = True     # legacy always wrote the base (unfiltered) save
+        cfg["save_broadband"]   = legacy   # legacy band loop included broadband
+        cfg["save_other_bands"] = legacy
 
     return cfg
 
@@ -281,20 +288,43 @@ def load_config_file():
     config["previous_run_config_file"] = config_file
     msg = "\nConfig " + config_file + " loaded for rerun\n"
     window["-FILE_INFO-"].update(msg + "\n", append=True)
+
     return config
 
 
-def ask_apply_output_filtering(config):
-    """Ask if user wants to filter output."""
-    txt = "Do you want to also save filtered output?"
-    url = "https://mne.tools/stable/auto_tutorials/preprocessing/25_background_filtering.html"
+def ask_output_save_options(config):
+    """Choose which output variants to save: unfiltered, broadband, individual bands.
+
+    Any combination is allowed (at least one required). When broadband or the
+    individual bands are selected, the existing frequency-band cutoff editor is
+    offered, exactly as before.
+
+    Note on ICA / source reconstruction: in those modes the data is already
+    broadband (0.5-47 Hz) filtered, so 'unfiltered' is physically identical to
+    'broadband'. To avoid writing the same file twice, 'unfiltered' is saved as
+    broadband and the separate base file is suppressed (resolved at run time in
+    should_save_unfiltered_base / get_active_frequency_bands).
+    """
+    note = (
+        "Note: if ICA or source reconstruction is enabled, the data is already\n"
+        "broadband (0.5-47 Hz) filtered, so 'unfiltered' is saved as broadband\n"
+        "and will not be written twice."
+    )
     layout = [
-        [sg.Text(txt, enable_events=True, background_color="white")],
-        [sg.Button("Yes"), sg.Button("No")],
-        [sg.Push(background_color="white"), sg.Button("More info")],
+        [sg.Text("Select which output(s) to save (one or more):", background_color="white")],
+        [sg.Checkbox("Unfiltered output", default=config.get("save_unfiltered", True),
+                     key="-SAVE_UNFILT-", background_color="white")],
+        [sg.Checkbox("Broadband-filtered output", default=config.get("save_broadband", False),
+                     key="-SAVE_BROADBAND-", background_color="white")],
+        [sg.Checkbox("Individual frequency bands (delta, theta, alpha, beta, ...)",
+                     default=config.get("save_other_bands", False),
+                     key="-SAVE_OTHER_BANDS-", background_color="white")],
+        [sg.Text(note, font=("Default", 10, "italic"), text_color="gray",
+                 background_color="white")],
+        [sg.Button("Ok"), sg.Push(background_color="white")],
     ]
     window = sg.Window(
-        "EEG processing input parameters",
+        "Output save options",
         layout,
         modal=True,
         use_custom_titlebar=True,
@@ -304,16 +334,31 @@ def ask_apply_output_filtering(config):
     )
     while True:
         event, values = window.read()
-        if event == "More info":
-            wb.open_new_tab(url)
-            continue
-        if event == "Yes":
-            config["apply_output_filtering"] = 1
-            config = ask_update_frequency_bands(config)
+        if event == "Ok":
+            if not any(values[k] for k in
+                       ("-SAVE_UNFILT-", "-SAVE_BROADBAND-", "-SAVE_OTHER_BANDS-")):
+                sg.popup_error("Please select at least one output option.",
+                               font=font, location=(100, 100))
+                continue
+            config["save_unfiltered"]  = values["-SAVE_UNFILT-"]
+            config["save_broadband"]   = values["-SAVE_BROADBAND-"]
+            config["save_other_bands"] = values["-SAVE_OTHER_BANDS-"]
             break
-        if event in (sg.WIN_CLOSED, "No"):
+        if event in (sg.WIN_CLOSED,):
+            config.setdefault("save_unfiltered", True)
+            config.setdefault("save_broadband", False)
+            config.setdefault("save_other_bands", False)
             break
     window.close()
+
+    # Provisional; recomputed authoritatively at run time once ICA/source are known.
+    config["apply_output_filtering"] = 1 if (config["save_broadband"]
+                                             or config["save_other_bands"]) else 0
+
+    # Offer the cutoff editor whenever any filtered output is requested.
+    if config["save_broadband"] or config["save_other_bands"]:
+        config = ask_update_frequency_bands(config)
+
     return config
 
 
@@ -480,42 +525,58 @@ def update_frequency_bands(config):
 
 
 def get_active_frequency_bands(config):
-    """Return a list of tuples containing the active frequency band pairs based on toggle settings."""
+    """Return active (low_key, high_key) frequency-band pairs based on save toggles.
+
+    - 'other bands' (delta/theta/alpha[/1/2]/beta[/1/2]/custom) gated by save_other_bands.
+    - broadband included if save_broadband, OR if save_unfiltered is set while ICA/source
+      recon is active (in that mode the already-broadband data is saved as broadband).
+    """
     active_bands = []
 
-    # Always include delta and theta
-    active_bands.extend([("delta_low", "delta_high"), ("theta_low", "theta_high")])
+    if config.get("save_other_bands", True):
+        active_bands.extend([("delta_low", "delta_high"), ("theta_low", "theta_high")])
 
-    # Add alpha bands based on toggle
-    if config["use_split_alpha"]:
-        active_bands.extend([("alpha1_low", "alpha1_high"), ("alpha2_low", "alpha2_high")])
-    else:
-        active_bands.append(("alpha_low", "alpha_high"))
+        if config.get("use_split_alpha", False):
+            active_bands.extend([("alpha1_low", "alpha1_high"), ("alpha2_low", "alpha2_high")])
+        else:
+            active_bands.append(("alpha_low", "alpha_high"))
 
-    # Add beta bands based on toggle
-    if config["use_split_beta"]:
-        active_bands.extend([("beta1_low", "beta1_high"), ("beta2_low", "beta2_high")])
-    else:
-        active_bands.append(("beta_low", "beta_high"))
+        if config.get("use_split_beta", False):
+            active_bands.extend([("beta1_low", "beta1_high"), ("beta2_low", "beta2_high")])
+        else:
+            active_bands.append(("beta_low", "beta_high"))
 
-    # Always include broadband
-    active_bands.append(("broadband_low", "broadband_high"))
+        try:
+            custom_low = config.get(("cut_off_frequency", "custom_low"), "")
+            custom_high = config.get(("cut_off_frequency", "custom_high"), "")
+            if custom_low and custom_high:
+                float(custom_low)
+                float(custom_high)
+                active_bands.append(("custom_low", "custom_high"))
+        except ValueError:
+            pass
 
-    # Check for custom frequency band
-    try:
-        custom_low = config.get(("cut_off_frequency", "custom_low"), "")
-        custom_high = config.get(("cut_off_frequency", "custom_high"), "")
-        
-        # Only add if both values are present and can be converted to numbers
-        if custom_low and custom_high:
-            float(custom_low)
-            float(custom_high)
-            active_bands.append(("custom_low", "custom_high"))
-    except ValueError:
-        # If conversion to float fails (e.g. user typed text), we simply skip the custom band
-        pass
+    src_or_ica = config.get("apply_ica") or config.get("apply_source_recon")
+    include_broadband = config.get("save_broadband", True) or (
+        config.get("save_unfiltered", True) and src_or_ica
+    )
+    if include_broadband:
+        active_bands.append(("broadband_low", "broadband_high"))
 
     return active_bands
+
+def should_save_unfiltered_base(config):
+    """Whether to write the base (no band suffix) unfiltered file for this batch.
+
+    Suppressed when ICA or source recon is active: the data is already broadband
+    filtered, so the base save would duplicate the broadband band output. In that
+    case 'unfiltered' is folded into broadband instead (see get_active_frequency_bands).
+    """
+    if not config.get("save_unfiltered", True):
+        return False
+    if config.get("apply_ica") or config.get("apply_source_recon"):
+        return False
+    return True
 
 
 def select_output_directory(config):
@@ -1994,27 +2055,19 @@ def reorder_labels_to_beamformer(labels, atlas_cfg):
 
 
 def get_montage_name_from_selection(selection):
-    """Convert user's dropdown selection to MNE montage name.
-    
-    Returns:
-        str: MNE montage name, "native", "MEG", or "generic"
-    """
-    # Check in standard montage options
     if selection in settings["montage_options"]:
         return settings["montage_options"][selection]
-    
-    # Check in txt import options
     if selection in settings["txt_import_options"]:
         return settings["txt_import_options"][selection]
-    
-    # Fallback for legacy config files
-    for legacy_key, montage_name in settings.get("legacy_montage_map", {}).items():
-        if selection in str(legacy_key):
-            return montage_name
-    
-    # Default fallback
-    return "native"
 
+    legacy = settings.get("legacy_montage_map", {})
+    if selection in legacy:                       # exact string-key match (your ".edf_10-20" patterns)
+        return legacy[selection]
+    for legacy_key, montage_name in legacy.items():  # tuple-key fallback (the "Force ..." generation)
+        if isinstance(legacy_key, tuple) and selection in legacy_key:
+            return montage_name
+
+    return "native"
 
 def is_txt_import(selection):
     """Check if the user selected a .txt import option."""
@@ -3400,7 +3453,7 @@ while True:  # @noloop remove
         )  # function will check if epoch_selection has already been made, if not then it will ask
         config = ask_average_ref(config)
         config = ask_downsample_factor(config, settings)
-        config = ask_apply_output_filtering(config)
+        config = ask_output_save_options(config)
         config = ask_ica_option(config)
         config = ask_source_recon_option(config)
         msg = "Loaded config: "
@@ -3420,7 +3473,7 @@ while True:  # @noloop remove
         )  # batch_prefix batch_name batch_output_subdirectory config_file logfile
         config = ask_average_ref(config)
         config = ask_epoch_selection(config)
-        config = ask_apply_output_filtering(config)
+        config = ask_output_save_options(config)
         config = ask_ica_option(config)
         config = ask_source_recon_option(config)  # before file loop
         # list of patterns read from eeg_processing_config_XX
@@ -3456,6 +3509,10 @@ while True:  # @noloop remove
             # progess bar vars
             lfl = len(config["input_file_paths"])
             filenum = 0
+            
+            # Authoritative gate: now that ICA/source recon are known, recompute
+            # whether any filtered output (incl. broadband-via-unfiltered) is needed.
+            config["apply_output_filtering"] = 1 if get_active_frequency_bands(config) else 0
 
             for file_path in config["input_file_paths"]:
                 raw_source_input = None
@@ -3472,17 +3529,17 @@ while True:  # @noloop remove
                 msg = "\n*** Processing file " + file_path + " ***"
                 window["-RUN_INFO-"].update(msg + "\n", append=True)
                 window["-FILE_INFO-"].update(msg + "\n", append=True)
-
+                
                 raw, config = create_raw(config)
                 
                 # Channel dropping – per-file
                 drop_key = (file_name, "drop")
                 
-                if config["rerun"] == 0 or drop_key not in config:
-                    # First time we encounter this file (or a fresh run) → ask user
-                    raw, config = update_channels_to_be_dropped(raw, config, file_name)
+                # Always ask which channels to drop (fresh run or rerun), so the user
+                # can choose different channels than before. The selection is read from
+                # the live channel names and overwrites any previously saved list.
+                raw, config = update_channels_to_be_dropped(raw, config, file_name)
                 
-                # Always drop whatever is recorded for this file (empty list if key missing)
                 raw.drop_channels(config.get(drop_key, []))
 
                 # Temporary raw file to work with during preprocessing
@@ -3645,7 +3702,8 @@ while True:  # @noloop remove
                     len2 = len(selected_epochs_sensor)
                     progress_bar_epochs.UpdateBar(0, len2)
 
-                    save_epoch_data_to_txt(selected_epochs_sensor, config["file_path_sensor"])
+                    if should_save_unfiltered_base(config):
+                        save_epoch_data_to_txt(selected_epochs_sensor, config["file_path_sensor"])
 
                     if config["apply_output_filtering"]:
                         frequency_band_pairs = get_active_frequency_bands(config)
@@ -3690,11 +3748,12 @@ while True:  # @noloop remove
                                 raw_source, config,
                                 config["downsampled_sample_frequency"],
                             )
-                            save_epoch_data_to_txt(
-                                selected_epochs_source,
-                                config[f"file_path_source_{tag}"],
-                                scalings=source_scalings,
-                            )
+                            if should_save_unfiltered_base(config):
+                                save_epoch_data_to_txt(
+                                    selected_epochs_source,
+                                    config[f"file_path_source_{tag}"],
+                                    scalings=source_scalings,
+                                )
 
                             if config["apply_output_filtering"]:
                                 for low_band, high_band in frequency_band_pairs:
@@ -3722,8 +3781,9 @@ while True:  # @noloop remove
                 else:  # equals no epoch_output
                     msg = "No epoch selection performed"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                    save_whole_EEG_to_txt(raw, config, config["file_path_sensor"])
+                    
+                    if should_save_unfiltered_base(config):
+                        save_whole_EEG_to_txt(raw, config, config["file_path_sensor"])
                     progress_bar_epochs.UpdateBar(1, 1)
 
                     if config["apply_output_filtering"]:
@@ -3762,13 +3822,14 @@ while True:  # @noloop remove
                                 source_channel_names_bf if "beamformer" in config.get("source_methods", []) else {},
                                 inverse_operators if [m for m in config.get("source_methods", []) if m != "beamformer"] else {},
                             )
-
-                            save_whole_EEG_to_txt(
-                                raw_source, config,
-                                config[f"file_path_source_{tag}"],
-                                scalings=source_scalings,
-                            )
-
+                                
+                            if should_save_unfiltered_base(config):
+                                save_whole_EEG_to_txt(
+                                    raw_source, config,
+                                    config[f"file_path_source_{tag}"],
+                                    scalings=source_scalings,
+                                )
+                            
                             if config["apply_output_filtering"]:
                                 frequency_band_pairs = get_active_frequency_bands(config)
                                 
