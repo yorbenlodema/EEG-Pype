@@ -27,3 +27,45 @@ This version added an implementation of MNE's minimum-norm estimate source recon
 
 ## Version 4.5.2
 This version added more granular options to save either a combination of or in isolation: unfiltered, broadband and band filtered output. At the same time, the quantitative analysis module now provides the option to export the PSD as a plot in PNG format, or in CSV format per region/channel and/or averaged. This allows for further analyses and visualisation outside of EEG-Pype. Finally, also in the quantitative analysis module, the power bands used for all spectral (PSD) measures no longer overlap. Before, the upper limit of one frequency band and the lower limit of the next band would be the same frequency bin. Depending on frequency resolution, this could lead to more or less distortion of power metrics, resulting in a total relative power larger than 1.0. This has now been changed to making the upper limit of each frequency band the frequency bin before the cutoff frequency.
+
+## Version 4.6.0
+
+### Added
+
+* Added a recording-level `eeg_pype_export_metadata.json` sidecar for sensor and source exports.
+* Added metadata for preprocessing settings, filters, references, channels or regions, export scaling, software versions, ICA diagnostics and ICLabel results.
+* Added metadata states: `in_progress`, `complete` and `failed`.
+* Added a standalone aperiodic and periodic spectral-parameterisation module using `specparam==2.0.0rc7`.
+* Added multitaper PSD estimation, global and channel/region-level Specparam fitting, preview tools, QC warnings and reproducibility exports.
+* Added automatic preprocessing filtering pass-band discovery to the quantitative-analysis module.
+
+### Changed
+
+* ICA now uses deterministic extended infomax → more robust and matches ICLabel expectations.
+* Common-average reference is applied after bad-channel selection and before ICA → better ICLabel matching and less chance of problems during ICA with empty reference channels.
+* ICA is fitted before bad-channel interpolation.
+* Common-average reference is repeated after interpolation over the complete channel set.
+* Selecting ICA or source reconstruction automatically enables common-average reference.
+* ICA is fitted on a separate 1–100 Hz or Nyquist-limited working copy → better ICLabel matching.
+* The ICA copy may be downsampled to 250 or 256 Hz when sufficient samples remain.
+* The fitted ICA component count is limited by the user setting and measured EEG rank.
+* Relative-power and spectral-variability calculations now use the detected preprocessing pass-band rather than relying on Nyquist alone.
+
+### Fixed
+
+* Prevented metadata-writing errors from stopping EEG preprocessing.
+* Prevented one failed recording from terminating the remaining batch.
+* Prevented NumPy and non-finite values from making metadata sidecars unwritable.
+* Prevented stale ICLabel results from previous reruns from being exported.
+* Improved consistency between the reference used for ICA, epoch selection and final export.
+* Prevented relative-power denominators from silently including frequencies outside the preprocessing pass-band.
+
+### Compatibility notes
+
+* The ICA, interpolation and common-average-reference order has changed, so results may differ from earlier EEG-Pype versions.
+* A sampling frequency of 250 or 256 Hz or higher is recommended for ICLabel.
+* An exact 100 Hz ICA upper cutoff requires at least 204 Hz with the current transition-band settings.
+* At lower sampling frequencies, EEG-Pype automatically applies a lower Nyquist-safe ICA cutoff and logs a warning.
+* The aperiodic module currently requires `specparam==2.0.0rc7`.
+* Legacy EEG-Pype text output without JSON metadata remains supported.
+
