@@ -3174,7 +3174,7 @@ def create_main_window() -> Any:
             [sg.Text("", key="-RESOLUTION-", size=(48, 4), font=("Helvetica", 9, "italic"), background_color=main_bg)],
         ], background_color=main_bg, expand_x=True)],
         [sg.Frame("Specparam fit", [
-            [sg.Text("Fit range (Hz):", background_color=main_bg), sg.Input("3", key="-FIT_MIN-", size=(6, 1)), sg.Text("to", background_color=main_bg), sg.Input("40", key="-FIT_MAX-", size=(6, 1))],
+            [sg.Text("Fit range (Hz):", background_color=main_bg), sg.Input("1", key="-FIT_MIN-", size=(6, 1)), sg.Text("to", background_color=main_bg), sg.Input("30", key="-FIT_MAX-", size=(6, 1))],
             [sg.Text("Aperiodic mode:", background_color=main_bg), sg.Combo(["Fixed", "Knee"], default_value="Fixed", key="-APERIODIC_MODE-", readonly=True)],
             [sg.Text("Periodic mode:", background_color=main_bg), sg.Combo(["Gaussian", "Skewed_Gaussian", "Cauchy"], default_value="Gaussian", key="-PERIODIC_MODE-", readonly=True)],
             [sg.Text("Peak width limits:", background_color=main_bg), sg.Input("1", key="-PEAK_WIDTH_MIN-", size=(6, 1)), sg.Text("to", background_color=main_bg), sg.Input("8", key="-PEAK_WIDTH_MAX-", size=(6, 1))],
