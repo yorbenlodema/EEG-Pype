@@ -26,6 +26,8 @@ The software is not (yet) able to:
 In addition, a separate quantitative analysis module allows for the calculation of several commonly used quantitative measures on the resting-state EEG epochs that are created by our pre-processing module. See below for more details.
 
 ### Tips for use and known issues
+**Please note that EEG-Pype 4.6.0 has undergone quite some changes compared to previous versions (see Changelog) so outcomes may differ slightly from previous versions.**
+
 When choosing the settings for the current analysis batch, most windows contain a "more info" button which will take you to an appropriate MNE documentation page.
 
 When no raw EEG files show up in the file selection window, please choose a different file type in the dropdown menu on the right (it might be stuck on only showing .txt files for instance).
@@ -202,6 +204,93 @@ conda create -n EEG-Pype python=3.11
 conda activate EEG-Pype
 python -m pip install .
 ```
+
+### ICA, ICLabel and common-average reference
+#### Processing order
+When common-average reference and ICA are enabled, EEG-Pype uses the following order:
+1. Load the recording and remove channels selected for permanent dropping.
+2. Identify and mark bad EEG channels.
+3. Apply common-average reference over the remaining measured good EEG channels.
+4. Fit and apply ICA before bad-channel interpolation.
+5. Interpolate the bad channels.
+6. Apply common-average reference again over the complete interpolated channel set.
+7. Use the resulting signal for epoch selection and final export.
+   
+The first common-average reference provides ICA and ICLabel with common-average-referenced data while excluding marked bad channels from the reference average.
+Interpolation subsequently adds reconstructed channels that were not part of the first average. EEG-Pype therefore repeats common-average reference after interpolation so that the epoch-selection signal and final exported signal end in the same reference state.
+Selecting ICA or source reconstruction automatically enables common-average reference. Legacy rerun configurations are migrated when necessary.
+
+#### ICA fitting signal versus exported signal
+The ICA decomposition is fitted on a separate working copy.
+The requested ICA fit band is:
+1–100 Hz
+The upper cutoff is automatically reduced when the native sampling frequency cannot support 100 Hz together with the configured transition band and Nyquist safety margin.
+When ICA or source reconstruction is enabled, the final exported EEG is filtered separately to:
+0.5–47 Hz
+The 1–100 Hz ICA working copy is therefore not itself exported as the broadband EEG.
+The fitted ICA solution is applied to both the epoch-selection signal and the final output signal.
+
+#### ICA-copy downsampling
+To reduce ICA fitting time, the ICA working copy may be downsampled:
+to 256 Hz for native sampling frequencies that are integer multiples of 256 Hz;
+otherwise to 250 Hz.
+Downsampling is used only when the resulting recording still contains enough samples for the requested component ceiling.
+No maximum ICA fit duration is applied by default.
+
+#### Sampling-frequency considerations
+The current GUI offers sampling-frequency choices starting at 250 Hz.
+A native sampling frequency of 250 or 256 Hz or higher is recommended for ICLabel use.
+EEG-Pype uses:
+a target ICA upper cutoff of 100 Hz;
+a 1.5 Hz upper transition bandwidth;
+a 0.5 Hz Nyquist safety margin.
+An exact 100 Hz upper cutoff therefore requires a native sampling frequency of at least 204 Hz.
+For example:
+200 Hz sampling frequency → effective ICA upper cutoff of 98 Hz
+250 Hz sampling frequency → effective ICA upper cutoff of 100 Hz
+256 Hz sampling frequency → effective ICA upper cutoff of 100 Hz
+When the full 1–100 Hz range is not possible, EEG-Pype uses a lower Nyquist-safe cutoff and reports this in the run log and recording metadata.
+
+#### ICLabel
+ICLabel can be enabled as decision support during ICA review.
+EEG-Pype displays:
+component topographies;
+component time series;
+the predicted ICLabel class;
+class probabilities for each component;
+components flagged as likely artifacts.
+The user remains responsible for deciding which components are excluded.
+EEG-Pype checks and records whether the ICLabel input matches the intended preprocessing characteristics:
+common-average reference;
+extended-infomax ICA;
+a 1–100 Hz ICA fit band;
+sufficient real PSD feature bins at the ICA sampling frequency.
+The complete ICLabel labels, probabilities and manually excluded components are stored in the recording-level JSON metadata.
+
+### Recording-level JSON metadata
+Every processed recording receives a log named:
+eeg_pype_export_metadata.json
+The log is stored alongside the recording's exported text files.
+
+This log contains:
+- metadata schema name and version;
+- processing status and timestamps;
+- EEG-Pype and dependency versions;
+- original file name;
+- original and output sampling frequency;
+- continuous or epoched representation;
+- epoch length and selected epoch count;
+- applied base filter;
+- dropped, bad and interpolated channels;
+- common-average-reference information;
+- detailed ICA settings and diagnostics;
+- ICLabel predictions and probabilities;
+- sensor channel names;
+- source method, atlas and region selection;
+- source region names;
+- export scaling factor and output unit.
+
+Separate profiles are stored for sensor output and for each requested source-reconstruction output.
 
 ## Quantitative analysis module (separate script)
 ### Overview
