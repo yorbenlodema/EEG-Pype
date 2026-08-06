@@ -32,3 +32,4 @@ dependencies:
   - pip:
     - matplotlib==3.9.0
     - freesimplegui
+    - specparam==2.0.0rc7
