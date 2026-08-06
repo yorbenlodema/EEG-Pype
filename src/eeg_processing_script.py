@@ -1,6 +1,7 @@
 """@authors: Herman van Dellen and Yorben Lodema."""
 
 import os
+import json
 import pickle
 import posixpath
 import traceback
@@ -10,6 +11,7 @@ from pathlib import Path
 import gc
 
 import mne
+import mne_icalabel
 import numpy as np
 import pandas as pd
 from mne.beamformer import apply_lcmv_raw, make_lcmv
@@ -35,7 +37,15 @@ sg.theme('DefaultNoMoreNagging')
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 
-EEG_version = "v4.5.2"
+EEG_version = "v4.6.0"
+
+# Version of the structure used in eeg_pype_export_metadata.json.
+# Increase this only when making incompatible changes to the JSON structure.
+EXPORT_METADATA_SCHEMA_VERSION = 1
+
+# MNE stores sensor EEG data internally in volts.
+# Exporting with a factor of 1e6 writes sensor data in microvolts.
+SENSOR_EXPORT_SCALINGS = {"eeg": 1e6}
 
 # initial values
 progress_value1 = 20
@@ -111,6 +121,54 @@ def print_dict(_dict):  # pprint and json.print do not work well with composite 
     for key, value in _dict.items():
         print(key, ":", value)
 
+
+ICA_CONFIG_DEFAULTS = {
+    "ica_random_state": 97,
+    "ica_fit_l_freq": 1.0,
+    "ica_fit_h_freq": 100.0,
+    "ica_fit_l_trans_bandwidth": 0.5,
+    "ica_fit_h_trans_bandwidth": 1.5,
+    "ica_fit_target_sfreq_pow2": 256,
+    "ica_fit_target_sfreq_other": 250,
+    "ica_fit_min_samples_per_param": 20,
+    "ica_fit_max_duration_s": None,
+}
+
+
+def ensure_ica_config_defaults(config):
+    """Add ICA defaults to new and legacy configurations."""
+    for key, fallback in ICA_CONFIG_DEFAULTS.items():
+        config.setdefault(key, settings.get(key, fallback))
+
+    config.setdefault(
+        "nr_ica_components",
+        int(settings.get("default_ica_components", 30)),
+    )
+
+    forced_by = config.setdefault("car_forced_by", [])
+    if isinstance(forced_by, str):
+        config["car_forced_by"] = [forced_by]
+
+    return config
+
+
+def add_car_forced_reason(config, reason):
+    """Record why common-average reference was forced on."""
+    forced_by = config.setdefault("car_forced_by", [])
+    if isinstance(forced_by, str):
+        forced_by = [forced_by]
+    if reason not in forced_by:
+        forced_by.append(reason)
+    config["car_forced_by"] = forced_by
+
+
+def log_run_info(message):
+    """Write one or more lines to the GUI run log without stripping formatting."""
+    text = str(message)
+    if not text.endswith("\n"):
+        text += "\n"
+    window["-RUN_INFO-"].update(text, append=True)
+
 def write_config_file(config):
     """Write config file in .pkl format."""
     fn = config["config_file"]
@@ -124,6 +182,344 @@ def write_config_file(config):
     with open(fn, "wb") as f:
         pickle.dump(config, f)
     return fn
+
+
+def _json_timestamp():
+    """Return a local, timezone-aware ISO timestamp for metadata files."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _sanitise_for_json(value):
+    """Return a strict-JSON-safe copy of value.
+
+    Handles the cases that reach the sidecar from MNE and NumPy:
+    numpy scalars (np.int64 from ica.exclude, np.float32 from info),
+    numpy arrays, and non-finite floats (np.nan defaults in
+    ica_run_info / iclabel_compliance). Non-finite floats become null
+    because allow_nan=False would otherwise reject the entire document.
+
+    The original metadata dict is not modified, so later stages can keep
+    adding fields to it and re-writing.
+    """
+    # numpy scalar -> Python scalar, then fall through to the checks below
+    if isinstance(value, np.generic):
+        value = value.item()
+    elif isinstance(value, np.ndarray):
+        # tolist() also covers 0-d arrays, which are not iterable
+        return _sanitise_for_json(value.tolist())
+
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+
+    if isinstance(value, dict):
+        return {
+            (key if isinstance(key, str) else str(key)): _sanitise_for_json(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple, set)):
+        return [_sanitise_for_json(item) for item in value]
+
+    if isinstance(value, Path):
+        return str(value)
+
+    # Datetimes, MNE objects, anything unexpected: keep the sidecar
+    # writable rather than failing the whole recording.
+    return str(value)
+
+
+def write_export_metadata(metadata, path):
+    """Atomically write strict JSON metadata."""
+    path = Path(path)
+    temporary_path = path.with_suffix(path.suffix + ".tmp")
+
+    try:
+        # Sanitise first, then validate and serialize before touching the
+        # temporary file. allow_nan=False stays as a backstop: if anything
+        # non-finite survives sanitisation, that is a bug worth surfacing.
+        payload = json.dumps(
+            _sanitise_for_json(metadata),
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+
+        with temporary_path.open("w", encoding="utf-8") as f:
+            f.write(payload)
+
+        temporary_path.replace(path)
+
+    except Exception:
+        # Prevent stale or partially written temporary files.
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+    return str(path)
+
+
+def try_write_export_metadata(metadata, path, stage):
+    """Write metadata without allowing sidecar failure to stop EEG processing."""
+    try:
+        write_export_metadata(metadata, path)
+        return True
+
+    except Exception as err:
+        log_run_info(
+            f"WARNING: Could not write {stage} metadata sidecar for "
+            f"{config.get('file_name', 'unknown recording')}: "
+            f"{type(err).__name__}: {err}"
+        )
+        return False
+
+
+def initialise_export_metadata(
+    raw,
+    config,
+    file_name,
+    ica_excluded_components,
+):
+    """Create JSON-compatible metadata for one original EEG recording."""
+    forced_by = config.get("car_forced_by", [])
+    if isinstance(forced_by, str):
+        forced_by = [forced_by]
+
+    return {
+        "schema_name": "EEG-Pype export metadata",
+        "schema_version": EXPORT_METADATA_SCHEMA_VERSION,
+        "status": "in_progress",
+        "created_at": _json_timestamp(),
+        "eeg_pype_version": EEG_version,
+
+        "software_versions": {
+            "mne": str(mne.__version__),
+            "numpy": str(np.__version__),
+            "mne_icalabel": str(
+                getattr(mne_icalabel, "__version__", "unknown")
+            ),
+        },
+
+        "batch_name": config.get("batch_name"),
+
+        "input": {
+            # The full local path is deliberately not stored, making the
+            # output folder more portable and avoiding disclosure of paths.
+            "file_name": file_name,
+            "original_sampling_frequency_hz": float(
+                config["sample_frequency"]
+            ),
+        },
+
+        "output": {
+            "representation": (
+                "epoched"
+                if config.get("apply_epoch_selection")
+                else "continuous"
+            ),
+            "sampling_frequency_hz": float(raw.info["sfreq"]),
+            "epoch_length_seconds": (
+                float(config["epoch_length"])
+                if config.get("apply_epoch_selection")
+                else None
+            ),
+            # Filled after the selected sensor epochs have been created.
+            "number_of_selected_epochs": None,
+            "number_of_samples_before_epoch_selection": int(raw.n_times),
+            "txt_decimals": int(config["output_txt_decimals"]),
+            "base_highpass_hz": float(raw.info["highpass"]),
+            "base_lowpass_hz": float(raw.info["lowpass"]),
+        },
+
+        "preprocessing": {
+            "dropped_channels": list(
+                config.get((file_name, "drop"), [])
+            ),
+            "bad_channels": list(
+                config.get((file_name, "bad"), [])
+            ),
+            "ica_applied": bool(
+                config.get("apply_ica", False)
+            ),            
+            "ica_excluded_components": list(
+                ica_excluded_components
+            ),
+        
+            # Detailed ICA provenance created during perform_ica().
+            # Keep the separate excluded-components field above for
+            # convenient access and backwards compatibility.
+            "ica_run_info": (
+                config.get((file_name, "ica_run_info"))
+                if config.get("apply_ica", False)
+                else None
+            ),
+        
+            # Component-level ICLabel predictions and probabilities.
+            # Gate this on the current settings so an old result stored in
+            # a rerun configuration cannot accidentally be exported.
+            "icalabel_results": (
+                config.get((file_name, "icalabel_results"))
+                if (
+                    config.get("apply_ica", False)
+                    and config.get("use_icalabel", False)
+                )
+                else None
+            ),
+        
+            "average_reference_applied": bool(
+                config.get("apply_average_ref", False)
+            ),
+            "average_reference_forced_by": list(forced_by),
+        },
+
+        # Sensor and source profiles are added later, after the final
+        # output objects have been created.
+        "profiles": {},
+    }
+
+
+def register_sensor_profile(metadata, raw, config):
+    """Add final sensor-output properties to the metadata."""
+    average_reference = bool(
+        config.get("apply_average_ref", False)
+    )
+
+    metadata["profiles"]["sensor"] = {
+        "level": "sensor",
+
+        # Prefix shared by all sensor TXT files for this recording.
+        "file_prefix": os.path.basename(
+            config["file_path_sensor"]
+        ),
+
+        "channel_names": list(raw.ch_names),
+        "number_of_channels": int(len(raw.ch_names)),
+
+        "interpolated_bad_channels": list(
+            config.get((config["file_name"], "bad"), [])
+        ),
+
+        "reference": {
+            "scheme": (
+                "common_average"
+                if average_reference
+                else "original_as_imported"
+            ),
+            "implementation": (
+                "direct"
+                if average_reference
+                else "not_modified_by_EEG-Pype"
+            ),
+        },
+
+        "base_highpass_hz": float(raw.info["highpass"]),
+        "base_lowpass_hz": float(raw.info["lowpass"]),
+
+        "export_scaling": {
+            "factor": float(
+                SENSOR_EXPORT_SCALINGS["eeg"]
+            ),
+            "output_unit": "microvolt",
+        },
+    }
+
+
+def get_source_export_scaling(tag):
+    """Return the existing source TXT scaling and its EEG factor."""
+    if tag.startswith("eLORETA_") or tag.startswith("MNE_"):
+        factor = 1e12
+    else:
+        factor = 10.0
+
+    scalings = {
+        "eeg": factor,
+        "mag": 1e15,
+        "grad": 1e13,
+    }
+
+    return scalings, float(factor)
+
+
+def register_source_profile(
+    metadata,
+    raw_source,
+    raw_source_input,
+    config,
+    tag,
+    source_factor,
+):
+    """Add one source-reconstruction profile to the metadata."""
+    if tag.startswith("beamformer_"):
+        source_method = "beamformer"
+        atlas = tag[len("beamformer_"):]
+        region_selection = (
+            "full"
+            if config.get(
+                "beamformer_include_subcortical",
+                False,
+            )
+            else "cortical"
+        )
+    else:
+        # Examples:
+        # sLORETA_desikan
+        # eLORETA_desikan
+        # dSPM_desikan
+        # MNE_desikan
+        source_method, atlas = tag.rsplit("_", 1)
+        region_selection = "cortical"
+
+    profile_key = (
+        f"source_{source_method}_{atlas}_{region_selection}"
+    )
+
+    metadata["profiles"][profile_key] = {
+        "level": "source",
+
+        "file_prefix": os.path.basename(
+            config[f"file_path_source_{tag}"]
+        ),
+
+        "source_method": source_method,
+        "atlas": atlas,
+        "region_selection": region_selection,
+
+        "region_names": list(raw_source.ch_names),
+        "number_of_regions": int(
+            len(raw_source.ch_names)
+        ),
+
+        # This describes the sensor signal supplied to the source model.
+        # The resulting source signals themselves do not have a conventional
+        # sensor-reference scheme.
+        "sensor_reference_before_source_reconstruction": {
+            "scheme": "common_average",
+            "implementation": (
+                "average_reference_projector_for_source_modelling"
+            ),
+        },
+
+        # Use raw_source_input rather than raw_source. Source RawArray
+        # creation does not necessarily preserve the input filter metadata.
+        "base_highpass_hz": float(
+            raw_source_input.info["highpass"]
+        ),
+        "base_lowpass_hz": float(
+            raw_source_input.info["lowpass"]
+        ),
+
+        # Store the exact numerical factor. Avoid assigning a physical
+        # source unit until the units for every reconstruction method
+        # have been established definitively.
+        "export_scaling": {
+            "factor": float(source_factor),
+            "output_unit": "scaled_native_source_units",
+        },
+    }
 
 
 def load_config(fn):
@@ -154,6 +550,25 @@ def load_config(fn):
         cfg["save_unfiltered"]  = True     # legacy always wrote the base (unfiltered) save
         cfg["save_broadband"]   = legacy   # legacy band loop included broadband
         cfg["save_other_bands"] = legacy
+
+    cfg = ensure_ica_config_defaults(cfg)
+    migration_messages = cfg.setdefault("_migration_messages", [])
+
+    # Repair old configurations in which ICA/source reconstruction was enabled
+    # while common-average reference was disabled.
+    if cfg.get("apply_ica") and not cfg.get("apply_average_ref"):
+        cfg["apply_average_ref"] = 1
+        add_car_forced_reason(cfg, "ICA (migrated config)")
+        migration_messages.append(
+            "Legacy config repaired: average reference was enabled because ICA is active."
+        )
+
+    if cfg.get("apply_source_recon") and not cfg.get("apply_average_ref"):
+        cfg["apply_average_ref"] = 1
+        add_car_forced_reason(cfg, "source reconstruction (migrated config)")
+        migration_messages.append(
+            "Legacy config repaired: average reference was enabled because source reconstruction is active."
+        )
 
     return cfg
 
@@ -288,6 +703,9 @@ def load_config_file():
     config["previous_run_config_file"] = config_file
     msg = "\nConfig " + config_file + " loaded for rerun\n"
     window["-FILE_INFO-"].update(msg + "\n", append=True)
+
+    for migration_message in config.pop("_migration_messages", []):
+        log_run_info(migration_message)
 
     return config
 
@@ -627,7 +1045,10 @@ def select_output_directory(config):
 
 def ask_average_ref(config):
     """Ask if user wants to apply average reference to the raw EEG."""
-    txt = "Do you want to apply average reference to the raw EEG?"
+    txt = (
+        "Do you want to apply common-average reference to the raw EEG?\n"
+        "Note: ICA and source reconstruction will enable it automatically."
+    )
     url = "https://mne.tools/stable/auto_tutorials/preprocessing/55_setting_eeg_reference.html"
     layout = [
         [sg.Text(txt, enable_events=True, background_color="white")],
@@ -685,8 +1106,21 @@ def ask_ica_option(config):
             continue
         if event == "Yes":
             config["apply_ica"] = 1
+
+            if not config.get("apply_average_ref", 0):
+                sg.popup_ok(
+                    "This pipeline applies common-average reference before ICA.\n\n"
+                    "Average reference will therefore be enabled for this batch. "
+                    "This also keeps the ICA decomposition compatible with ICLabel.",
+                    title="Average reference required for ICA",
+                    font=font,
+                    location=(100, 100),
+                )
+                config["apply_average_ref"] = 1
+                add_car_forced_reason(config, "ICA")
+                log_run_info("Average reference enabled automatically because ICA was selected.")
+
             config = ask_nr_ica_components(config, settings)
-            # NEW: Ask about ICLabel assistance
             config = ask_icalabel_option(config)
             break
         if event == "No":
@@ -929,7 +1363,19 @@ def ask_source_recon_option(config):
                 config["beamformer_include_subcortical"] = False
  
             config["apply_source_recon"] = 1
-            config["apply_average_ref"] = 1
+            if not config.get("apply_average_ref", 0):
+                sg.popup_ok(
+                    "Source reconstruction requires common-average reference.\n\n"
+                    "Average reference will therefore be enabled for this batch.",
+                    title="Average reference required",
+                    font=font,
+                    location=(100, 100),
+                )
+                config["apply_average_ref"] = 1
+                add_car_forced_reason(config, "source reconstruction")
+                log_run_info(
+                    "Average reference enabled automatically because source reconstruction was selected."
+                )
             config["source_method"] = methods[0]  # backward compat
             break
  
@@ -1650,14 +2096,30 @@ def ask_epoch_length(config, settings):
 
 
 def ask_nr_ica_components(config, settings):
-    """Ask number of ICA components."""
+    """Ask for the maximum number of ICA components."""
+    default_value = config.get(
+        "nr_ica_components",
+        settings.get("default_ica_components", 30),
+    )
     layout = [
-        [sg.Text("Enter number of ICA components:", background_color="white")],
-        [sg.InputText(default_text=settings["default_ica_components"], key="-ICA_COMPONENTS-")],
-        [sg.Button("Ok", bind_return_key=True), sg.Push(background_color="white"), sg.Button("More info")],
+        [sg.Text("Maximum number of ICA components:", background_color="white")],
+        [sg.InputText(default_text=default_value, key="-ICA_COMPONENTS-")],
+        [
+            sg.Text(
+                "The effective number is min(this value, measured EEG rank).",
+                font=("Default", 10, "italic"),
+                text_color="gray",
+                background_color="white",
+            )
+        ],
+        [
+            sg.Button("Ok", bind_return_key=True),
+            sg.Push(background_color="white"),
+            sg.Button("More info"),
+        ],
     ]
     url = "https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html"
-    window = sg.Window(
+    window_components = sg.Window(
         "EEG processing input parameters",
         layout,
         modal=True,
@@ -1667,20 +2129,28 @@ def ask_nr_ica_components(config, settings):
         location=(100, 100),
     )
     while True:
-        event, values = window.read()
+        event, values = window_components.read()
         if event == "More info":
             wb.open_new_tab(url)
             continue
         if event == "Ok":
             try:
-                config["nr_ica_components"] = int(values["-ICA_COMPONENTS-"])
+                requested = int(values["-ICA_COMPONENTS-"])
+                if requested < 1:
+                    raise ValueError
+                config["nr_ica_components"] = requested
                 break
-            except:
-                sg.popup_error("No valid integer value", location=(100, 100), font=font)
-                window.close()
-        if event in (sg.WIN_CLOSED, "Ok"):
+            except (TypeError, ValueError):
+                sg.popup_error(
+                    "Enter a positive whole number.",
+                    location=(100, 100),
+                    font=font,
+                )
+                continue
+        if event == sg.WIN_CLOSED:
+            config["nr_ica_components"] = int(default_value)
             break
-    window.close()
+    window_components.close()
     return config
 
 
@@ -1777,25 +2247,46 @@ def set_batch_related_names(config):
 
 
 def set_file_output_related_names(config):
-    # Scope:in file loop
-    """Define all file/folder/path names associated with the current EEG FILE.
-
-    These names change for each file in the batch.
-    """
-    # strip file_name for use as sub dir
+    # Scope: in file loop
+    """Define all file/folder/path names for the current EEG file."""
+    # Strip file name for use as subdirectory.
     fn = config["file_name"].replace(" ", "")
     fn = fn.replace(".", "")
-    # Split the file path and extension to use when constructing the output file names
+
+    # Split the input path and extension for output naming.
     root, ext = os.path.splitext(config["file_path"])
+
     config["file_output_subdirectory"] = posixpath.join(
-        config["batch_output_subdirectory"], fn
+        config["batch_output_subdirectory"],
+        fn,
     )
-    if not os.path.exists(config["file_output_subdirectory"]):
+
+    if not os.path.exists(
+        config["file_output_subdirectory"]
+    ):
         os.makedirs(config["file_output_subdirectory"])
-    file_name_sensor = os.path.basename(root) + "_Sensor_level"
-    config["file_path_sensor"] = os.path.join(config["file_output_subdirectory"], file_name_sensor)
-    file_name_source = os.path.basename(root) + "_Source_level"
-    config["file_path_source"] = os.path.join(config["file_output_subdirectory"], file_name_source)
+
+    file_name_sensor = (
+        os.path.basename(root) + "_Sensor_level"
+    )
+    config["file_path_sensor"] = os.path.join(
+        config["file_output_subdirectory"],
+        file_name_sensor,
+    )
+
+    file_name_source = (
+        os.path.basename(root) + "_Source_level"
+    )
+    config["file_path_source"] = os.path.join(
+        config["file_output_subdirectory"],
+        file_name_source,
+    )
+
+    config["export_metadata_path"] = os.path.join(
+        config["file_output_subdirectory"],
+        "eeg_pype_export_metadata.json",
+    )
+
     return config
 
 
@@ -1813,8 +2304,9 @@ def get_source_file_path(config, atlas_name, include_subcortical):
 def create_dict():
     """Create initial dict with starting values for processing."""
     try:
-        return settings  # read defaults from settings file
-    except:
+        config = settings.copy()
+        return ensure_ica_config_defaults(config)
+    except Exception:
         sg.popup_error("Error create_dict: ", location=(100, 100), font=font)
         window.close()
 
@@ -2568,68 +3060,410 @@ def update_channels_to_be_dropped(raw, config, file_name):
     return raw, config
 
 
+def nyquist_safe_h_freq(sfreq, target=100.0, h_trans=1.5, margin=0.5):
+    """Return an h_freq whose transition band stays below Nyquist."""
+    ceiling = float(sfreq) / 2.0 - float(h_trans) - float(margin)
+    return float(min(float(target), ceiling))
+
+
+def has_common_average_reference(inst):
+    """Detect an applied custom average reference or active average-ref projector."""
+    custom_ref = inst.info.get("custom_ref_applied", 0)
+    try:
+        custom_ref_on = int(custom_ref) == 1
+    except (TypeError, ValueError):
+        custom_ref_on = bool(custom_ref)
+
+    active_average_projector = any(
+        bool(proj.get("active", False))
+        and "average eeg reference" in str(proj.get("desc", "")).lower()
+        for proj in inst.info.get("projs", [])
+    )
+    return bool(custom_ref_on or active_average_projector)
+
+
+def check_iclabel_compliance(inst, ica):
+    """Mirror the main ICLabel input checks and return a serializable record."""
+    highpass = float(inst.info.get("highpass", np.nan))
+    lowpass = float(inst.info.get("lowpass", np.nan))
+    car_ok = has_common_average_reference(inst)
+    band_ok = bool(
+        np.isclose(highpass, 1.0, atol=1e-6)
+        and np.isclose(lowpass, 100.0, atol=1e-6)
+    )
+
+    fit_params = dict(getattr(ica, "fit_params", {}) or {})
+    if ica.method == "infomax":
+        method_ok = fit_params.get("extended") is True
+    elif ica.method == "picard":
+        method_ok = (
+            fit_params.get("extended") is True
+            and fit_params.get("ortho", False) is False
+        )
+    else:
+        method_ok = False
+
+    sfreq = float(inst.info["sfreq"])
+    real_psd_bins = min(100, int(np.floor(sfreq / 2.0)))
+
+    return {
+        "car": bool(car_ok),
+        "band": bool(band_ok),
+        "method": bool(method_ok),
+        "details": {
+            "highpass": highpass,
+            "lowpass": lowpass,
+            "method": str(ica.method),
+            "fit_params": {str(k): v for k, v in fit_params.items()},
+            "psd_real_bins": int(real_psd_bins),
+            "psd_padded_bins": int(max(0, 100 - real_psd_bins)),
+        },
+    }
+
+
+def log_iclabel_compliance(compliance):
+    """Show ICLabel compatibility checks in the GUI run log."""
+    details = compliance["details"]
+    lines = ["ICLabel compatibility checks:"]
+    lines.append(
+        "  [OK] common-average reference"
+        if compliance["car"]
+        else "  [WARN] not common-average referenced; ICLabel is outside specification"
+    )
+    lines.append(
+        "  [OK] filter metadata are exactly 1-100 Hz"
+        if compliance["band"]
+        else (
+            "  [WARN] filter metadata are "
+            f"{details['highpass']:.1f}-{details['lowpass']:.1f} Hz; "
+            "ICLabel expects 1-100 Hz"
+        )
+    )
+    lines.append(
+        "  [OK] extended infomax"
+        if compliance["method"]
+        else (
+            "  [WARN] ICA method/settings do not match extended infomax: "
+            f"{details['method']} {details['fit_params']}"
+        )
+    )
+    if details["psd_padded_bins"] > 0:
+        lines.append(
+            "  [WARN] ICLabel PSD feature has "
+            f"{details['psd_real_bins']} real and "
+            f"{details['psd_padded_bins']} padded bins at this sample rate"
+        )
+    log_run_info("\n".join(lines))
+
+
+def downsample_for_ica(raw_ica, n_ceiling, config):
+    """Downsample the ICA/ICLabel copy when enough samples will remain."""
+    sfreq = float(raw_ica.info["sfreq"])
+    target_pow2 = int(config["ica_fit_target_sfreq_pow2"])
+    target_other = int(config["ica_fit_target_sfreq_other"])
+
+    ratio = sfreq / target_pow2
+    target = target_pow2 if np.isclose(ratio, round(ratio), atol=1e-9) else target_other
+
+    result = {
+        "native_sfreq": sfreq,
+        "target_sfreq": float(target),
+        "downsampled": False,
+        "reason": "native sample rate is already at or below the target",
+    }
+
+    if sfreq <= target:
+        log_run_info(f"ICA fit sample rate: {sfreq:g} Hz (native; no downsampling).")
+        return raw_ica, result
+
+    n_after = int(np.floor(raw_ica.n_times * target / sfreq))
+    required = int(
+        np.ceil(config["ica_fit_min_samples_per_param"] * int(n_ceiling) ** 2)
+    )
+    if n_after < required:
+        result["reason"] = (
+            f"downsampling would leave {n_after} samples, below the "
+            f"{required} requested for {n_ceiling} components"
+        )
+        log_run_info(
+            f"ICA fit sample rate: {sfreq:g} Hz (native). " + result["reason"] + "."
+        )
+        return raw_ica, result
+
+    raw_ica.resample(target, npad="auto")
+    result.update(
+        {
+            "fit_sfreq": float(raw_ica.info["sfreq"]),
+            "downsampled": True,
+            "reason": f"downsampled from {sfreq:g} Hz",
+        }
+    )
+    log_run_info(
+        f"ICA fit sample rate: {raw_ica.info['sfreq']:g} Hz "
+        f"(downsampled from {sfreq:g} Hz; {raw_ica.n_times} samples)."
+    )
+    return raw_ica, result
+
+
 def perform_ica(raw, raw_temp, config):
-    """Perform ICA on data with bad channels marked but not dropped.
-    
-    If ICLabel is enabled, runs component classification and displays
-    predictions alongside the ICA plots for cross-referencing.
-    """
+    """Fit extended-infomax ICA on a rank-limited 1-100 Hz CAR copy."""
     file_name = config["file_name"]
-    
-    msg = "Max # components = " + str(config["max_channels"])
-    window["-RUN_INFO-"].update(msg + "\n", append=True)
+    config = ensure_ica_config_defaults(config)
 
-    # Preparation of clean raw object to calculate ICA on
+    # Runtime invariant: ICA must be fitted and applied using the same
+    # common-average reference. The GUI and config migration should already
+    # guarantee this; this check prevents a future refactor or hand-edited
+    # config from silently reintroducing a reference mismatch.
+    car_ready = (
+        bool(config.get("apply_average_ref", 0))
+        and has_common_average_reference(raw)
+        and has_common_average_reference(raw_temp)
+    )
+    if not car_ready:
+        message = (
+            "Internal ICA invariant violated: raw and raw_temp must both be "
+            "common-average referenced before perform_ica() is called. "
+            "ICA fitting has been stopped to prevent a reference mismatch."
+        )
+        log_run_info("ERROR: " + message)
+        raise RuntimeError(message)
+
+    # raw and raw_temp have already been marked bad and average-referenced in
+    # the main loop. Add an explicit average-reference projector to the ICA
+    # copy so rank='info' accounts for the one-dimensional CAR rank loss.
     raw_ica = raw.copy()
-    raw_ica.filter(l_freq=1.0, h_freq=47.0, l_trans_bandwidth=0.5, h_trans_bandwidth=1.5)
+    raw_ica.info["bads"] = list(config[file_name, "bad"])
+    raw_ica = perform_average_reference(raw_ica, projection=True)
 
-    # Mark bad channels but don't drop them yet
-    raw_ica.info["bads"] = config[file_name, "bad"]
+    native_sfreq = float(raw_ica.info["sfreq"])
+    pre_filter_highpass = float(raw_ica.info.get("highpass", np.nan))
+    pre_filter_lowpass = float(raw_ica.info.get("lowpass", np.nan))
+    fit_l_freq = float(config["ica_fit_l_freq"])
+    requested_h_freq = float(config["ica_fit_h_freq"])
+    l_trans = float(config["ica_fit_l_trans_bandwidth"])
+    h_trans = float(config["ica_fit_h_trans_bandwidth"])
+    fit_h_freq = nyquist_safe_h_freq(
+        native_sfreq,
+        target=requested_h_freq,
+        h_trans=h_trans,
+    )
 
-    # Fit ICA excluding bad channels but without dropping them
-    ica = ICA(n_components=config["nr_ica_components"], method="fastica")
-    ica.fit(raw_ica, picks="eeg")
+    if fit_h_freq <= fit_l_freq:
+        raise RuntimeError(
+            f"ICA cannot be fitted for {file_name}: native sample rate "
+            f"{native_sfreq:g} Hz leaves no valid band above {fit_l_freq:g} Hz."
+        )
 
-    # Run ICLabel if enabled - do this BEFORE plotting so we can show results alongside
+    log_run_info(f"--- ICA setup: {file_name} ---")
+    forced_by = config.get("car_forced_by", [])
+    reference_origin = (
+        "forced by " + ", ".join(forced_by)
+        if forced_by
+        else "selected by user"
+    )
+    n_good_eeg = len(mne.pick_types(raw_ica.info, meg=False, eeg=True, exclude="bads"))
+    log_run_info(
+        f"Reference: common average ({reference_origin}); "
+        f"{n_good_eeg} good EEG channels in the average."
+    )
+
+    if fit_h_freq < requested_h_freq:
+        warning_level = "strong warning" if fit_h_freq < 47.0 else "warning"
+        log_run_info(
+            f"ICA fit-band {warning_level}: requested {fit_l_freq:g}-"
+            f"{requested_h_freq:g} Hz, but Nyquist permits only "
+            f"{fit_l_freq:g}-{fit_h_freq:.2f} Hz at {native_sfreq:g} Hz."
+        )
+
+    raw_ica.filter(
+        l_freq=fit_l_freq,
+        h_freq=fit_h_freq,
+        l_trans_bandwidth=l_trans,
+        h_trans_bandwidth=h_trans,
+        picks="eeg",
+    )
+
+    post_filter_highpass = float(raw_ica.info.get("highpass", np.nan))
+    post_filter_lowpass = float(raw_ica.info.get("lowpass", np.nan))
+    log_run_info(
+        f"ICA fit band: {fit_l_freq:g}-{fit_h_freq:.2f} Hz "
+        f"(requested {fit_l_freq:g}-{requested_h_freq:g} Hz; "
+        f"native sfreq {native_sfreq:g} Hz)."
+    )
+    log_run_info(
+        "Raw info highpass/lowpass before filter: "
+        f"{pre_filter_highpass:g}/{pre_filter_lowpass:g} Hz; after filter: "
+        f"{post_filter_highpass:g}/{post_filter_lowpass:g} Hz."
+    )
+
+    rank_info_dict = mne.compute_rank(raw_ica, rank="info", proj=True)
+    rank_info = int(rank_info_dict.get("eeg", 0))
+    if rank_info < 1:
+        raise RuntimeError(f"No usable EEG rank remains for ICA in {file_name}.")
+
+    user_limit = max(1, int(config["nr_ica_components"]))
+    n_ceiling = min(user_limit, rank_info)
+
+    raw_ica, downsample_info = downsample_for_ica(raw_ica, n_ceiling, config)
+
+    rank_data_dict = mne.compute_rank(raw_ica, rank=None, proj=True)
+    rank_data = int(rank_data_dict.get("eeg", 0))
+    if rank_data < 1:
+        raise RuntimeError(f"Measured EEG data rank is zero for {file_name}.")
+
+    # User-requested behavior: no separate hard cap. The GUI default is 30,
+    # but a user may request more; measured rank remains the safety limit.
+    n_components = min(user_limit, rank_info, rank_data)
+
+    if n_components < user_limit:
+        limiting_constraint = "measured EEG rank"
+    else:
+        limiting_constraint = "user setting"
+
+    log_run_info(
+        f"Rank: info={rank_info}, data={rank_data}. Components: user limit "
+        f"{user_limit} -> using {n_components} (limited by {limiting_constraint})."
+    )
+
+    # Optional duration cap (disabled by default). Keep raw_ica itself intact
+    # for ICLabel features and interactive source plotting.
+    fit_inst = raw_ica
+    max_duration_s = config.get("ica_fit_max_duration_s")
+    fit_was_cropped = False
+    crop_start_s = None
+    crop_stop_s = None
+    if max_duration_s is not None:
+        max_duration_s = float(max_duration_s)
+        sfreq = float(raw_ica.info["sfreq"])
+        duration_s = raw_ica.n_times / sfreq
+        if max_duration_s > 0 and duration_s > max_duration_s:
+            # Use a central segment rather than the often artifact-heavy start
+            # of the recording. ICLabel and plotting still receive the full
+            # resampled ICA copy.
+            crop_start_s = (duration_s - max_duration_s) / 2.0
+            crop_stop_s = crop_start_s + max_duration_s - 1.0 / sfreq
+            fit_inst = raw_ica.copy().crop(
+                tmin=crop_start_s,
+                tmax=crop_stop_s,
+            )
+            fit_was_cropped = True
+            log_run_info(
+                f"ICA fit input cropped to a central {max_duration_s:g} s "
+                f"segment ({crop_start_s:.1f}-{crop_stop_s:.1f} s); "
+                "ICLabel and plotting still use the full resampled copy."
+            )
+
+    ica = ICA(
+        n_components=n_components,
+        method="infomax",
+        fit_params=dict(extended=True),
+        random_state=int(config["ica_random_state"]),
+        max_iter="auto",
+    )
+
+    log_run_info(
+        "Fitting extended-infomax ICA; this may take several minutes on long files..."
+    )
+    eeg_picks = mne.pick_types(fit_inst.info, meg=False, eeg=True, exclude="bads")
+    ica.fit(fit_inst, picks=eeg_picks)
+
+    n_samples = int(fit_inst.n_times)
+    samples_per_component_sq = float(n_samples / (n_components ** 2))
+    converged = bool(ica.n_iter_ < ica.max_iter)
+    if not converged:
+        log_run_info(
+            f"WARNING: extended infomax reached max_iter={ica.max_iter} "
+            f"(n_iter={ica.n_iter_}); the optimiser reached its iteration "
+            "limit and convergence was not confirmed."
+        )
+    if samples_per_component_sq < config["ica_fit_min_samples_per_param"]:
+        log_run_info(
+            "WARNING: ICA has only "
+            f"{samples_per_component_sq:.1f} samples / n_components^2; "
+            f"recommended floor is {config['ica_fit_min_samples_per_param']}."
+        )
+
+    compliance = check_iclabel_compliance(raw_ica, ica)
+    log_iclabel_compliance(compliance)
+
+    config[file_name, "ica_run_info"] = {
+        "random_state": int(config["ica_random_state"]),
+        "method": str(ica.method),
+        "extended": True,
+        "n_components_requested": int(user_limit),
+        "n_components_used": int(n_components),
+        "rank_info": int(rank_info),
+        "rank_data": int(rank_data),
+        "limiting_constraint": limiting_constraint,
+        "fit_l_freq": fit_l_freq,
+        "fit_h_freq_requested": requested_h_freq,
+        "fit_h_freq_effective": float(fit_h_freq),
+        "fit_l_trans_bandwidth": l_trans,
+        "fit_h_trans_bandwidth": h_trans,
+        "fit_sfreq": float(raw_ica.info["sfreq"]),
+        "native_sfreq": native_sfreq,
+        "downsampling": downsample_info,
+        "fit_was_cropped": bool(fit_was_cropped),
+        "fit_crop_start_s": crop_start_s,
+        "fit_crop_stop_s": crop_stop_s,
+        "fit_duration_s": float(fit_inst.n_times / fit_inst.info["sfreq"]),
+        "n_samples": n_samples,
+        "samples_per_component_sq": samples_per_component_sq,
+        "car_applied": bool(has_common_average_reference(raw_ica)),
+        "car_forced_by": list(config.get("car_forced_by", [])),
+        "n_iter": int(ica.n_iter_),
+        "max_iter": int(ica.max_iter),
+        "converged": converged,
+        "info_highpass_before": pre_filter_highpass,
+        "info_lowpass_before": pre_filter_lowpass,
+        "info_highpass_after": post_filter_highpass,
+        "info_lowpass_after": post_filter_lowpass,
+        "mne_version": str(mne.__version__),
+        "mne_icalabel_version": str(getattr(mne_icalabel, "__version__", "unknown")),
+        "numpy_version": str(np.__version__),
+        "iclabel_compliance": compliance,
+    }
+
+    # Run ICLabel before plotting, so predictions can be shown alongside the ICA plots.
     ic_labels = None
     flagged_components = []
-    window_icalabel = None  # Track the ICLabel window for cleanup
-    
+    window_icalabel = None
+
     if config.get("use_icalabel", 0):
-        ic_labels, flagged_components = perform_icalabel_classification(raw_ica, ica, config)
-        
-        # Store labels in ICA object for plotting (MNE-ICALabel integration)
-        ica.labels_ = {label: [] for label in ["brain", "muscle", "eye", "heart", "line_noise", "channel_noise", "other"]}
+        ic_labels, flagged_components = perform_icalabel_classification(
+            raw_ica, ica, config
+        )
+
+        ica.labels_ = {
+            label: []
+            for label in [
+                "brain", "muscle", "eye", "heart",
+                "line_noise", "channel_noise", "other",
+            ]
+        }
         for i, label in enumerate(ic_labels["labels"]):
             ica.labels_[label].append(i)
-    
-    # Plot components (topomap) - NON-BLOCKING
+
     fig_topo = ica.plot_components(show=False)
-    if isinstance(fig_topo, list):
-        for fig in fig_topo:
-            fig.show()
-    else:
-        fig_topo.show()
-    
-    # Plot sources (time series) - NON-BLOCKING initially
+    topo_figures = fig_topo if isinstance(fig_topo, list) else [fig_topo]
+    for fig in topo_figures:
+        fig.show()
+
     fig_sources = ica.plot_sources(raw_ica, block=False, show=True)
-    
-    # If ICLabel is enabled, show the results window now (all 3 windows visible together)
+
     if config.get("use_icalabel", 0) and ic_labels is not None:
-        # Display ICLabel results in a popup - user can cross-reference with the plots
         window_icalabel = display_icalabel_results_window_concurrent(
-            ic_labels, 
+            ic_labels,
             ica,
-            flagged_components
+            flagged_components,
         )
-    
-    # Now block on the sources plot for final component selection
-    # User closes this window when done selecting components to exclude
+
     import matplotlib.pyplot as plt
-    msg = "Select components to exclude by clicking on them in the time series plot.\nClose the time series window when done."
-    window["-RUN_INFO-"].update(msg + "\n", append=True)
-    
-    # Show a small instruction popup
+    log_run_info(
+        "Select components to exclude by clicking on them in the time-series plot. "
+        "Close the time-series window when done."
+    )
+
     sg.popup_ok(
         "All ICA windows are now open:\n\n"
         "1. Component Topomaps - spatial patterns\n"
@@ -2641,41 +3475,58 @@ def perform_ica(raw, raw_temp, config):
         font=font,
         location=(100, 100),
     )
-    
-    # Block until user closes the sources figure
+
     plt.show(block=True)
-    
-    # Clean up the ICLabel window after user is done
+
     if window_icalabel is not None:
         window_icalabel.close()
 
-    # Calculate and display explained variance
-    pca_explained_variances = ica.pca_explained_variance_ / ica.pca_explained_variance_.sum()
+    # Close only the figures created for this ICA step. In particular, the
+    # MNE source browser can otherwise retain a reference to raw_ica after the
+    # user closes its window. Avoid plt.close("all"), which could affect
+    # unrelated figures in the processing pipeline.
+    for fig in [*topo_figures, fig_sources]:
+        try:
+            plt.close(fig)
+        except Exception:
+            try:
+                fig.close()
+            except Exception:
+                pass
+    del fig_sources, fig_topo, topo_figures
+
+    pca_explained_variances = (
+        ica.pca_explained_variance_ / ica.pca_explained_variance_.sum()
+    )
     ica_explained_variances = pca_explained_variances[: ica.n_components_]
     cumul_pct = 0.0
-
     for idx, var in enumerate(ica_explained_variances):
         pct = round(100 * var, 2)
         cumul_pct += pct
-        msg = f"Explained variance for ICA component {idx}: {pct}% ({round(cumul_pct, 1)}%)"
-        window["-RUN_INFO-"].update(msg + "\n", append=True)
+        log_run_info(
+            f"Explained variance for ICA component {idx}: {pct}% "
+            f"({round(cumul_pct, 1)}%)"
+        )
 
-    # Apply ICA to the temporary raw object
-    raw_temp.info["bads"] = config[file_name, "bad"]
+    raw_temp.info["bads"] = list(config[file_name, "bad"])
     ica.apply(raw_temp)
-    
-    # Log ICLabel results if used
+
+    excluded_components = list(ica.exclude)
+    config[file_name, "ica_run_info"]["excluded_components"] = excluded_components
+
     if ic_labels is not None:
-        excluded_components = list(ica.exclude)
         log_text = format_icalabel_for_log(ica, ic_labels, excluded_components)
-        window["-RUN_INFO-"].update(log_text + "\n", append=True)
-        
-        # Store in config for later reference
+        log_run_info(log_text)
         config[file_name, "icalabel_results"] = {
             "labels": ic_labels["labels"],
             "probabilities": ic_labels["y_pred_proba"].tolist(),
             "excluded_components": excluded_components,
         }
+
+    # Delete both names: in the usual uncropped case they refer to the same
+    # Raw object, while in the cropped case they refer to separate objects.
+    del fit_inst, raw_ica
+    gc.collect()
 
     return raw_temp, ica, config
 
@@ -3030,10 +3881,31 @@ def perform_temp_down_sampling(raw, config):
     return raw, temporary_sample_f
 
 
-def perform_average_reference(raw):
-    """Appliy a global average reference on the 'eeg' type channels of the raw EEG."""
-    raw.set_eeg_reference("average", projection=True, ch_type="eeg")
-    raw.apply_proj()
+def perform_average_reference(raw, *, projection):
+    """Apply common-average reference to EEG channels.
+
+    With ``projection=False``, CAR is applied directly and no average-reference
+    projector remains in ``info``. Consequently, ``compute_rank(rank="info")``
+    will not detect the associated one-dimensional rank loss. Use
+    ``projection=True`` wherever projector-based rank bookkeeping or MNE
+    source modelling requires it.
+
+    ``projection`` is keyword-only so each caller must explicitly choose the
+    intended metadata/rank behaviour.
+
+    Side effect worth knowing: ``projection=True`` resets
+    ``info['custom_ref_applied']`` to 0, whereas ``projection=False`` sets it
+    to 1. The source-reconstruction branch depends on that reset; ICLabel's
+    own CAR heuristic tests the opposite condition (see
+    ``log_iclabel_compliance``).
+    """
+    raw.set_eeg_reference(
+        "average",
+        projection=projection,
+        ch_type="eeg",
+    )
+    if projection:
+        raw.apply_proj()
     return raw
 
 
@@ -3492,6 +4364,8 @@ while True:  # @noloop remove
         window["-RUN_INFO-"].update(msg + "\n", append=True)
 
     elif event == "Start processing":
+        failed_files = []
+        
         try:
             # reset progress bars
             progress_bar_files.UpdateBar(0, 0)
@@ -3505,6 +4379,11 @@ while True:  # @noloop remove
             
             msg = f"Processing batch with montage setting: {config['montage_name']}"
             window["-RUN_INFO-"].update(msg + "\n", append=True)
+            log_run_info(
+                f"Software versions: EEG-Pype {EEG_version}; "
+                f"MNE {mne.__version__}; NumPy {np.__version__}; "
+                f"MNE-ICALabel {getattr(mne_icalabel, '__version__', 'unknown')}"
+            )
 
             # progess bar vars
             lfl = len(config["input_file_paths"])
@@ -3516,369 +4395,643 @@ while True:  # @noloop remove
 
             for file_path in config["input_file_paths"]:
                 raw_source_input = None
-                
-                config["file_path"] = file_path
-                f = Path(file_path)
-                file_name = f.name
-                input_dir = str(f.parents[0])  # to prevent error print config json
-                config["input_directory"] = input_dir  # save, scope=batch
-                config["file_name"] = file_name
-                config = set_file_output_related_names(config)  # set output directory for epochs etc.
-                # add file name to list in config file, to be used in rerun
-                config["input_file_names"].append(file_name)  # add file name to config file, to be used in rerun
-                msg = "\n*** Processing file " + file_path + " ***"
-                window["-RUN_INFO-"].update(msg + "\n", append=True)
-                window["-FILE_INFO-"].update(msg + "\n", append=True)
-                
-                raw, config = create_raw(config)
-                
-                # Channel dropping – per-file
-                drop_key = (file_name, "drop")
-                
-                # Always ask which channels to drop (fresh run or rerun), so the user
-                # can choose different channels than before. The selection is read from
-                # the live channel names and overwrites any previously saved list.
-                raw, config = update_channels_to_be_dropped(raw, config, file_name)
-                
-                raw.drop_channels(config.get(drop_key, []))
-
-                # Temporary raw file to work with during preprocessing
-                raw_temp = raw.copy()
-
-                plot_power_spectrum(raw_temp, filtered=False)
-                plot_clean_psd(raw_temp, filtered=False)
-
-                raw_temp.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4,
-                                h_trans_bandwidth=1.5, picks="eeg")
-                
-                # Mark bad channels
-                if config["rerun"] == 1:
-                    raw_temp.info["bads"] = config[file_name, "bad"]
+                export_metadata = None
+                raw = None
+                raw_temp = None
+                raw_source = None
+                file_name = os.path.basename(file_path)
+            
+                try:
+                    config["file_path"] = file_path
+                    f = Path(file_path)
+                    file_name = f.name
                     
-                raw_temp, config = perform_bad_channels_selection(raw_temp, config)
-
-                # Calculate max channels before any interpolation
-                config["max_channels"] = len(raw.ch_names) - len(config[file_name, "bad"])
-
-                # Apply ICA before interpolation if requested
-                if config["apply_ica"]:
-                    raw_temp, ica, config = perform_ica(raw, raw_temp, config)
-
-                # Interpolate bad channels after ICA
-                raw_temp.interpolate_bads(reset_bads=True)
-
-                if config["sample_frequency"] > 1000: 
-                    raw_temp, temporary_sample_f = perform_temp_down_sampling(raw_temp, config)
-                else:
-                    temporary_sample_f = config["sample_frequency"]
-
-                raw_temp = perform_average_reference(raw_temp)
-
-                if config["apply_epoch_selection"]:
-                    plot_power_spectrum(raw_temp, filtered=True)
-                    plot_clean_psd(raw_temp, filtered=True)
-
-                if config["apply_epoch_selection"] and (config["rerun"] == 0 or rerun_no_previous_epoch_selection == 1):
-                    config = perform_epoch_selection(raw_temp, config, temporary_sample_f)
-
-                del raw_temp
-                gc.collect()
-                msg = "Freed preprocessing data from memory"
-                window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                
-
-                # ********** Preparation of the final raw file and epochs for export **********
-                if config["apply_ica"] or config["apply_source_recon"]:
-                    raw.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4, h_trans_bandwidth=1.5, picks="eeg")
-                    msg = "Output signal filtered to 0.5-47 Hz (transition bands 0.4 Hz and 1.5 Hz resp. \
-                        Necessary for ICA and/or source reconstruction"
+                    input_dir = str(f.parents[0])  # to prevent error print config json
+                    config["input_directory"] = input_dir  # save, scope=batch
+                    config["file_name"] = file_name
+                    config = set_file_output_related_names(config)  # set output directory for epochs etc.
+                    # add file name to list in config file, to be used in rerun
+                    config["input_file_names"].append(file_name)  # add file name to config file, to be used in rerun
+                    msg = "\n*** Processing file " + file_path + " ***"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                # Ensure bads are marked before ICA apply
-                raw.info["bads"] = config[file_name, "bad"]
+                    window["-FILE_INFO-"].update(msg + "\n", append=True)
                     
-                # Apply ICA
-                if config["apply_ica"]:
-                    ica.apply(raw)  # ICA automatically ignores bad channels
-                    msg = "ICA applied to output signal"
+                    raw, config = create_raw(config)
+                    
+                    # Channel dropping – per-file
+                    drop_key = (file_name, "drop")
+                    
+                    # Always ask which channels to drop (fresh run or rerun), so the user
+                    # can choose different channels than before. The selection is read from
+                    # the live channel names and overwrites any previously saved list.
+                    raw, config = update_channels_to_be_dropped(raw, config, file_name)
+                    
+                    raw.drop_channels(config.get(drop_key, []))
+    
+                    # Temporary raw file to work with during preprocessing
+                    raw_temp = raw.copy()
+    
+                    plot_power_spectrum(raw_temp, filtered=False)
+                    plot_clean_psd(raw_temp, filtered=False)
+    
+                    raw_temp.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4,
+                                    h_trans_bandwidth=1.5, picks="eeg")
+                    
+                    # Mark bad channels
+                    if config["rerun"] == 1:
+                        raw_temp.info["bads"] = config[file_name, "bad"]
+    
+                    raw_temp, config = perform_bad_channels_selection(raw_temp, config)
+    
+                    # The selected bad-channel list is now authoritative. Mark it on
+                    # both independent Raw objects before any re-referencing.
+                    bad_channels = list(config[file_name, "bad"])
+                    raw.info["bads"] = bad_channels
+                    raw_temp.info["bads"] = bad_channels
+    
+                    # Early CAR: after bad-channel selection, before ICA. MNE excludes
+                    # marked bad EEG channels from the average, so this reference is
+                    # computed over measured channels only.
+                    #
+                    # This costs nothing at the output. Because MNE's spherical-spline
+                    # interpolation weights sum to 1, the constant offset introduced
+                    # here passes through interpolate_bads() unchanged and is removed
+                    # again by the second CAR below. Verified numerically: the final
+                    # data are identical to a conventional interpolate-then-CAR
+                    # pipeline to ~1e-19. CAR#1 exists purely to give ICA and ICLabel
+                    # the reference they were designed for.
+                    if config.get("apply_average_ref", 0):
+                        raw = perform_average_reference(raw, projection=False)
+                        raw_temp = perform_average_reference(raw_temp, projection=False)
+                        n_good_eeg = len(
+                            mne.pick_types(raw.info, meg=False, eeg=True, exclude="bads")
+                        )
+                        log_run_info(
+                            "Average reference applied before ICA/epoch selection "
+                            f"using {n_good_eeg} good EEG channels."
+                        )
+    
+                    # Apply ICA before interpolation if requested
+                    if config["apply_ica"]:
+                        raw_temp, ica, config = perform_ica(raw, raw_temp, config)
+    
+                    # Interpolate bad channels after ICA
+                    raw_temp.interpolate_bads(reset_bads=True)
+    
+                    if config["sample_frequency"] > 1000:
+                        raw_temp, temporary_sample_f = perform_temp_down_sampling(raw_temp, config)
+                    else:
+                        temporary_sample_f = config["sample_frequency"]
+    
+                    # Second CAR. Interpolation reintroduces a non-zero channel mean
+                    # (interpolated channels were not part of the first average), so
+                    # repeat CAR over the full channel set. Mirrors the raw branch at
+                    # "BRANCH B" below; both objects must end in the same reference
+                    # state or epoch selection is judged on data unlike the export.
+                    if config.get("apply_average_ref", 0):
+                        raw_temp = perform_average_reference(raw_temp, projection=False)
+    
+                    if config["apply_epoch_selection"]:
+                        plot_power_spectrum(raw_temp, filtered=True)
+                        plot_clean_psd(raw_temp, filtered=True)
+    
+                    if config["apply_epoch_selection"] and (config["rerun"] == 0 or rerun_no_previous_epoch_selection == 1):
+                        config = perform_epoch_selection(raw_temp, config, temporary_sample_f)
+    
+                    del raw_temp
+                    gc.collect()
+                    msg = "Freed preprocessing data from memory"
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-                    if ica.exclude:
-                        msg = f"Excluded ICA components: {sorted(ica.exclude)}"
+    
+                    
+    
+                    # ********** Preparation of the final raw file and epochs for export **********
+                    if config["apply_ica"] or config["apply_source_recon"]:
+                        raw.filter(l_freq=settings["general_filt_low"], h_freq=settings["general_filt_high"], l_trans_bandwidth=0.4, h_trans_bandwidth=1.5, picks="eeg")
+                        msg = (
+                            "Final output signal filtered to 0.5-47 Hz "
+                            "(transition bands 0.4 and 1.5 Hz). "
+                            "The ICA decomposition was fitted separately on its "
+                            "1-100 Hz (or Nyquist-limited) copy."
+                        )
+                        window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+                    # Bad channels were already marked immediately after selection.
+    
+                    # Apply ICA
+                    if config["apply_ica"]:
+                        ica.apply(raw)  # ICA automatically ignores bad channels
+                        msg = "ICA applied to output signal"
+                        window["-RUN_INFO-"].update(msg + "\n", append=True)
+                        if ica.exclude:
+                            msg = f"Excluded ICA components: {sorted(ica.exclude)}"
+                            window["-RUN_INFO-"].update(msg + "\n", append=True)
+                            
+                    # =====================================================================
+                    # DOWNSAMPLING (Applied to both branches)
+                    # =====================================================================
+                    config["downsampled_sample_frequency"] = config["sample_frequency"] // config["downsample_factor"]
+                    if config["downsample_factor"] != 1:
+                        raw.resample(config["downsampled_sample_frequency"], npad="auto")
+                        msg = f"All output signals downsampled to {config['downsampled_sample_frequency']} Hz"
+                    else:
+                        msg = "No downsampling applied to output signals"
+                    window["-RUN_INFO-"].update(msg + "\n", append=True)
+                    
+                    # =============================================================
+                    # INITIALIZE RECORDING-LEVEL JSON METADATA
+                    # =============================================================
+                    ica_excluded_components = (
+                        sorted(
+                            int(component)
+                            for component in ica.exclude
+                        )
+                        if config.get("apply_ica")
+                        else []
+                    )
+                    
+                    export_metadata = initialise_export_metadata(
+                        raw,
+                        config,
+                        file_name,
+                        ica_excluded_components,
+                    )
+                    
+                    # Write an initial sidecar immediately. If processing later
+                    # fails, status="in_progress" makes the incomplete recording
+                    # distinguishable from a successfully completed output.
+                    metadata_written = try_write_export_metadata(
+                        export_metadata,
+                        config["export_metadata_path"],
+                        stage="initial",
+                    )
+                    
+                    if metadata_written:
+                        log_run_info(
+                            "Started recording metadata sidecar: "
+                            + config["export_metadata_path"]
+                        )
+    
+                    # =====================================================================
+                    # BRANCH A: PREPARE SOURCE-LEVEL DATA
+                    # =====================================================================
+                    if config["apply_source_recon"]:
+                        raw_source_input = raw.copy()
+                        
+                        # 1. Drop bad channels entirely for source recon
+                        raw_source_input.drop_channels(config[file_name, "bad"])
+                        msg = f"Source recon: Dropped {len(config[file_name, 'bad'])} bad channels. Remaining: {len(raw_source_input.ch_names)}"
                         window["-RUN_INFO-"].update(msg + "\n", append=True)
                         
-                # =====================================================================
-                # DOWNSAMPLING (Applied to both branches)
-                # =====================================================================
-                config["downsampled_sample_frequency"] = config["sample_frequency"] // config["downsample_factor"]
-                if config["downsample_factor"] != 1:
-                    raw.resample(config["downsampled_sample_frequency"], npad="auto")
-                    msg = f"All output signals downsampled to {config['downsampled_sample_frequency']} Hz"
-                else:
-                    msg = "No downsampling applied to output signals"
-                window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                # =====================================================================
-                # BRANCH A: PREPARE SOURCE-LEVEL DATA
-                # =====================================================================
-                if config["apply_source_recon"]:
-                    raw_source_input = raw.copy()
-                    
-                    # 1. Drop bad channels entirely for source recon
-                    raw_source_input.drop_channels(config[file_name, "bad"])
-                    msg = f"Source recon: Dropped {len(config[file_name, 'bad'])} bad channels. Remaining: {len(raw_source_input.ch_names)}"
+                        # 2. Force average reference (required for accurate forward models).
+                        #
+                        #    projection=True is mandatory here and not interchangeable
+                        #    with projection=False. raw_source_input inherits
+                        #    custom_ref_applied=1 from CAR#1, which MNE's
+                        #    _check_reference() rejects with "Custom EEG reference is
+                        #    not allowed for inverse modeling". Calling
+                        #    set_eeg_reference(projection=True) resets
+                        #    custom_ref_applied to 0 and leaves an active average-ref
+                        #    projector in info, which is exactly the state
+                        #    make_forward_solution / make_inverse_operator / make_lcmv
+                        #    require. Changing this to projection=False breaks all
+                        #    source reconstruction.
+                        raw_source_input = perform_average_reference(
+                            raw_source_input, projection=True
+                        )
+                        msg = "Source recon: Forced average reference applied."
+                        window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+                        source_methods = config.get("source_methods", [])
+                        source_output_keys = []
+    
+                        # Beamformer Setup
+                        if "beamformer" in source_methods:
+                            spatial_filters = {}
+                            source_channel_names_bf = {}
+                            for atlas_name in config["beamformer_atlas_selection"]:
+                                sf, ch_names = perform_beamform(
+                                    raw_source_input, config,
+                                    atlas_name=atlas_name,
+                                    include_subcortical=config["beamformer_include_subcortical"],
+                                )
+                                spatial_filters[atlas_name] = sf
+                                source_channel_names_bf[atlas_name] = ch_names
+                                
+                                tag = f"beamformer_{atlas_name}"
+                                config["source_method"] = "beamformer"
+                                config[f"file_path_source_{tag}"] = get_source_file_path(
+                                    config, atlas_name,
+                                    config["beamformer_include_subcortical"],
+                                )
+                                source_output_keys.append(tag)
+    
+                        # Minimum-norm Setup
+                        mn_methods = [m for m in source_methods if m != "beamformer"]
+                        inverse_operators = {}
+                        if mn_methods:
+                            inv_op, inv_labels, _, inv_channel_names = perform_inverse_recon(raw_source_input, config)
+                            for mn_method in mn_methods:
+                                inverse_operators[mn_method] = (inv_op, inv_labels, inv_channel_names)
+                                
+                                tag = f"{mn_method}_desikan"
+                                config["source_method"] = mn_method
+                                config[f"file_path_source_{tag}"] = get_source_file_path(
+                                    config, "desikan", include_subcortical=False,
+                                )
+                                source_output_keys.append(tag)
+    
+                        config["source_method"] = source_methods[0] if source_methods else None
+    
+                    # =====================================================================
+                    # BRANCH B: PREPARE SENSOR-LEVEL DATA
+                    # =====================================================================
+                    # 1. Interpolate bad channels
+                    raw.interpolate_bads(reset_bads=True)
+                    msg = f"Sensor output: Interpolated {len(config[file_name, 'bad'])} bad channels."
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-                    
-                    # 2. Force average reference (required for accurate forward models)
-                    raw_source_input = perform_average_reference(raw_source_input)
-                    msg = "Source recon: Forced average reference applied."
+    
+                    # 2. Second CAR, matching the raw_temp branch above. Re-referenced
+                    #    over the interpolated channel set to restore exact zero-sum.
+                    #    Skipped entirely when the user declined CAR, in which case
+                    #    CAR#1 was skipped too and the data keep their original ref.
+                    if config["apply_average_ref"]:
+                        raw = perform_average_reference(raw, projection=False)
+                        msg = "Sensor output: Average reference applied."
+                    else:
+                        msg = "Sensor output: No re-referencing applied (keeping original reference)."
                     window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                    source_methods = config.get("source_methods", [])
-                    source_output_keys = []
-
-                    # Beamformer Setup
-                    if "beamformer" in source_methods:
-                        spatial_filters = {}
-                        source_channel_names_bf = {}
-                        for atlas_name in config["beamformer_atlas_selection"]:
-                            sf, ch_names = perform_beamform(
-                                raw_source_input, config,
-                                atlas_name=atlas_name,
-                                include_subcortical=config["beamformer_include_subcortical"],
-                            )
-                            spatial_filters[atlas_name] = sf
-                            source_channel_names_bf[atlas_name] = ch_names
-                            
-                            tag = f"beamformer_{atlas_name}"
-                            config["source_method"] = "beamformer"
-                            config[f"file_path_source_{tag}"] = get_source_file_path(
-                                config, atlas_name,
-                                config["beamformer_include_subcortical"],
-                            )
-                            source_output_keys.append(tag)
-
-                    # Minimum-norm Setup
-                    mn_methods = [m for m in source_methods if m != "beamformer"]
-                    inverse_operators = {}
-                    if mn_methods:
-                        inv_op, inv_labels, _, inv_channel_names = perform_inverse_recon(raw_source_input, config)
-                        for mn_method in mn_methods:
-                            inverse_operators[mn_method] = (inv_op, inv_labels, inv_channel_names)
-                            
-                            tag = f"{mn_method}_desikan"
-                            config["source_method"] = mn_method
-                            config[f"file_path_source_{tag}"] = get_source_file_path(
-                                config, "desikan", include_subcortical=False,
-                            )
-                            source_output_keys.append(tag)
-
-                    config["source_method"] = source_methods[0] if source_methods else None
-
-                # =====================================================================
-                # BRANCH B: PREPARE SENSOR-LEVEL DATA
-                # =====================================================================
-                # 1. Interpolate bad channels
-                raw.interpolate_bads(reset_bads=True)
-                msg = f"Sensor output: Interpolated {len(config[file_name, 'bad'])} bad channels."
-                window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                # 2. Apply average reference ONLY if requested by the user
-                if config["apply_average_ref"]:
-                    raw = perform_average_reference(raw)
-                    msg = "Sensor output: Average reference applied."
-                else:
-                    msg = "Sensor output: No re-referencing applied (keeping original reference)."
-                window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-
-
-                root, ext = os.path.splitext(file_path)  ### Nog nodig?
-
-                # Create output epochs and export to .txt
-                if config["apply_epoch_selection"]:
-                    selected_epochs_sensor = apply_epoch_selection(raw, config, config["downsampled_sample_frequency"])
-
-                    len2 = len(selected_epochs_sensor)
-                    progress_bar_epochs.UpdateBar(0, len2)
-
-                    if should_save_unfiltered_base(config):
-                        save_epoch_data_to_txt(selected_epochs_sensor, config["file_path_sensor"])
-
-                    if config["apply_output_filtering"]:
-                        frequency_band_pairs = get_active_frequency_bands(config)
-
-                        for low_band, high_band in frequency_band_pairs:
-                            selected_epochs_sensor_filt = apply_epoch_selection(
-                                raw,
-                                config,
-                                sfreq=config["downsampled_sample_frequency"],
-                                filtering=True,
-                                l_freq=config["cut_off_frequency", low_band],
-                                h_freq=config["cut_off_frequency", high_band],
-                            )
-
+    
+                    register_sensor_profile(
+                        export_metadata,
+                        raw,
+                        config,
+                    )
+    
+                    root, ext = os.path.splitext(file_path)  ### Nog nodig?
+    
+                    # Create output epochs and export to .txt
+                    if config["apply_epoch_selection"]:
+                        selected_epochs_sensor = apply_epoch_selection(raw, config, config["downsampled_sample_frequency"])
+    
+                        len2 = len(selected_epochs_sensor)
+    
+                        export_metadata["output"][
+                            "number_of_selected_epochs"
+                        ] = int(len2)
+    
+                        progress_bar_epochs.UpdateBar(0, len2)
+    
+                        if should_save_unfiltered_base(config):
                             save_epoch_data_to_txt(
-                                selected_epochs_sensor_filt,
+                                selected_epochs_sensor,
                                 config["file_path_sensor"],
-                                filtering=True,
-                                l_freq=config["cut_off_frequency", low_band],
-                                h_freq=config["cut_off_frequency", high_band],
+                                scalings=SENSOR_EXPORT_SCALINGS,
                             )
-
-                    if config["apply_source_recon"]:
-                        for tag in source_output_keys:
-                            msg = f"Exporting source-level epochs for {tag}..."
-                            window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                            # --- DYNAMIC SCALING FIX ---
-                            if "eLORETA" in tag or "MNE" in tag:
-                                source_scalings = {"eeg": 1e12, "mag": 1e15, "grad": 1e13} # Scale Am to nAm
-                            else:
-                                source_scalings = {"eeg": 10, "mag": 1e15, "grad": 1e13}  # Standard NAI scale
-
-                            raw_source = compute_source_raw_for_tag(
-                                tag, raw_source_input, config, 
-                                spatial_filters if "beamformer" in config.get("source_methods", []) else {},
-                                source_channel_names_bf if "beamformer" in config.get("source_methods", []) else {},
-                                inverse_operators if [m for m in config.get("source_methods", []) if m != "beamformer"] else {},
-                            )
-
-                            selected_epochs_source = apply_epoch_selection(
-                                raw_source, config,
-                                config["downsampled_sample_frequency"],
-                            )
-                            if should_save_unfiltered_base(config):
-                                save_epoch_data_to_txt(
-                                    selected_epochs_source,
-                                    config[f"file_path_source_{tag}"],
-                                    scalings=source_scalings,
+    
+                        if config["apply_output_filtering"]:
+                            frequency_band_pairs = get_active_frequency_bands(config)
+    
+                            for low_band, high_band in frequency_band_pairs:
+                                selected_epochs_sensor_filt = apply_epoch_selection(
+                                    raw,
+                                    config,
+                                    sfreq=config["downsampled_sample_frequency"],
+                                    filtering=True,
+                                    l_freq=config["cut_off_frequency", low_band],
+                                    h_freq=config["cut_off_frequency", high_band],
                                 )
-
-                            if config["apply_output_filtering"]:
-                                for low_band, high_band in frequency_band_pairs:
-                                    selected_epochs_source_filt = apply_epoch_selection(
-                                        raw_source, config,
-                                        sfreq=config["downsampled_sample_frequency"],
-                                        filtering=True,
-                                        l_freq=config["cut_off_frequency", low_band],
-                                        h_freq=config["cut_off_frequency", high_band],
-                                    )
+    
+                                save_epoch_data_to_txt(
+                                    selected_epochs_sensor_filt,
+                                    config["file_path_sensor"],
+                                    scalings=SENSOR_EXPORT_SCALINGS,
+                                    filtering=True,
+                                    l_freq=config["cut_off_frequency", low_band],
+                                    h_freq=config["cut_off_frequency", high_band],
+                                )
+    
+                        if config["apply_source_recon"]:
+                            for tag in source_output_keys:
+                                msg = f"Exporting source-level epochs for {tag}..."
+                                window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+                                source_scalings, source_factor = (
+                                    get_source_export_scaling(tag)
+                                )
+                                
+                                raw_source = compute_source_raw_for_tag(
+                                    tag,
+                                    raw_source_input,
+                                    config,
+                                    (
+                                        spatial_filters
+                                        if "beamformer"
+                                        in config.get(
+                                            "source_methods",
+                                            [],
+                                        )
+                                        else {}
+                                    ),
+                                    (
+                                        source_channel_names_bf
+                                        if "beamformer"
+                                        in config.get(
+                                            "source_methods",
+                                            [],
+                                        )
+                                        else {}
+                                    ),
+                                    (
+                                        inverse_operators
+                                        if [
+                                            method
+                                            for method in config.get(
+                                                "source_methods",
+                                                [],
+                                            )
+                                            if method != "beamformer"
+                                        ]
+                                        else {}
+                                    ),
+                                )
+                                
+                                register_source_profile(
+                                    export_metadata,
+                                    raw_source,
+                                    raw_source_input,
+                                    config,
+                                    tag,
+                                    source_factor,
+                                )
+                                
+                                selected_epochs_source = apply_epoch_selection(
+                                    raw_source, config,
+                                    config["downsampled_sample_frequency"],
+                                )
+                                if should_save_unfiltered_base(config):
                                     save_epoch_data_to_txt(
-                                        selected_epochs_source_filt,
+                                        selected_epochs_source,
                                         config[f"file_path_source_{tag}"],
                                         scalings=source_scalings,
-                                        filtering=True,
-                                        l_freq=config["cut_off_frequency", low_band],
-                                        h_freq=config["cut_off_frequency", high_band],
                                     )
-
-                            del raw_source, selected_epochs_source
-                            gc.collect()
-                            msg = f"Finished {tag}, freed memory"
-                            window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                else:  # equals no epoch_output
-                    msg = "No epoch selection performed"
-                    window["-RUN_INFO-"].update(msg + "\n", append=True)
-                    
-                    if should_save_unfiltered_base(config):
-                        save_whole_EEG_to_txt(raw, config, config["file_path_sensor"])
-                    progress_bar_epochs.UpdateBar(1, 1)
-
-                    if config["apply_output_filtering"]:
-                        frequency_band_pairs = get_active_frequency_bands(config)
-
-                        for low_band, high_band in frequency_band_pairs:
-                            raw_filt = filter_output_raw(
+    
+                                if config["apply_output_filtering"]:
+                                    for low_band, high_band in frequency_band_pairs:
+                                        selected_epochs_source_filt = apply_epoch_selection(
+                                            raw_source, config,
+                                            sfreq=config["downsampled_sample_frequency"],
+                                            filtering=True,
+                                            l_freq=config["cut_off_frequency", low_band],
+                                            h_freq=config["cut_off_frequency", high_band],
+                                        )
+                                        save_epoch_data_to_txt(
+                                            selected_epochs_source_filt,
+                                            config[f"file_path_source_{tag}"],
+                                            scalings=source_scalings,
+                                            filtering=True,
+                                            l_freq=config["cut_off_frequency", low_band],
+                                            h_freq=config["cut_off_frequency", high_band],
+                                        )
+    
+                                del raw_source, selected_epochs_source
+                                gc.collect()
+                                msg = f"Finished {tag}, freed memory"
+                                window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+                    else:  # equals no epoch_output
+                        msg = "No epoch selection performed"
+                        window["-RUN_INFO-"].update(msg + "\n", append=True)
+                        
+                        if should_save_unfiltered_base(config):
+                            save_whole_EEG_to_txt(
                                 raw,
                                 config,
-                                l_freq=config["cut_off_frequency", low_band],
-                                h_freq=config["cut_off_frequency", high_band],
-                            )
-                            save_whole_EEG_to_txt(
-                                raw_filt,
-                                config,
                                 config["file_path_sensor"],
-                                filtering=True,
-                                l_freq=config["cut_off_frequency", low_band],
-                                h_freq=config["cut_off_frequency", high_band],
+                                scalings=SENSOR_EXPORT_SCALINGS,
                             )
-                    
-                    if config["apply_source_recon"]:
-                        for tag in source_output_keys:
-                            msg = f"Exporting whole source-level EEG for {tag}..."
-                            window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-                            # --- DYNAMIC SCALING FIX ---
-                            if "eLORETA" in tag or "MNE" in tag:
-                                source_scalings = {"eeg": 1e12, "mag": 1e15, "grad": 1e13} # Scale Am to nAm
-                            else:
-                                source_scalings = {"eeg": 10, "mag": 1e15, "grad": 1e13}  # Standard NAI scale
-
-                            raw_source = compute_source_raw_for_tag(
-                                tag, raw_source_input, config, 
-                                spatial_filters if "beamformer" in config.get("source_methods", []) else {},
-                                source_channel_names_bf if "beamformer" in config.get("source_methods", []) else {},
-                                inverse_operators if [m for m in config.get("source_methods", []) if m != "beamformer"] else {},
-                            )
-                                
-                            if should_save_unfiltered_base(config):
-                                save_whole_EEG_to_txt(
-                                    raw_source, config,
-                                    config[f"file_path_source_{tag}"],
-                                    scalings=source_scalings,
+                        progress_bar_epochs.UpdateBar(1, 1)
+    
+                        if config["apply_output_filtering"]:
+                            frequency_band_pairs = get_active_frequency_bands(config)
+    
+                            for low_band, high_band in frequency_band_pairs:
+                                raw_filt = filter_output_raw(
+                                    raw,
+                                    config,
+                                    l_freq=config["cut_off_frequency", low_band],
+                                    h_freq=config["cut_off_frequency", high_band],
                                 )
-                            
-                            if config["apply_output_filtering"]:
-                                frequency_band_pairs = get_active_frequency_bands(config)
+                                save_whole_EEG_to_txt(
+                                    raw_filt,
+                                    config,
+                                    config["file_path_sensor"],
+                                    scalings=SENSOR_EXPORT_SCALINGS,
+                                    filtering=True,
+                                    l_freq=config["cut_off_frequency", low_band],
+                                    h_freq=config["cut_off_frequency", high_band],
+                                )
+                        
+                        if config["apply_source_recon"]:
+                            for tag in source_output_keys:
+                                msg = f"Exporting whole source-level EEG for {tag}..."
+                                window["-RUN_INFO-"].update(msg + "\n", append=True)
+    
+                                source_scalings, source_factor = (
+                                    get_source_export_scaling(tag)
+                                )
                                 
-                                for low_band, high_band in frequency_band_pairs:
-                                    raw_source_filt = filter_output_raw(
-                                        raw_source, config,
-                                        l_freq=config["cut_off_frequency", low_band],
-                                        h_freq=config["cut_off_frequency", high_band],
-                                    )
+                                raw_source = compute_source_raw_for_tag(
+                                    tag,
+                                    raw_source_input,
+                                    config,
+                                    (
+                                        spatial_filters
+                                        if "beamformer"
+                                        in config.get(
+                                            "source_methods",
+                                            [],
+                                        )
+                                        else {}
+                                    ),
+                                    (
+                                        source_channel_names_bf
+                                        if "beamformer"
+                                        in config.get(
+                                            "source_methods",
+                                            [],
+                                        )
+                                        else {}
+                                    ),
+                                    (
+                                        inverse_operators
+                                        if [
+                                            method
+                                            for method in config.get(
+                                                "source_methods",
+                                                [],
+                                            )
+                                            if method != "beamformer"
+                                        ]
+                                        else {}
+                                    ),
+                                )
+                                
+                                register_source_profile(
+                                    export_metadata,
+                                    raw_source,
+                                    raw_source_input,
+                                    config,
+                                    tag,
+                                    source_factor,
+                                )
+                                    
+                                if should_save_unfiltered_base(config):
                                     save_whole_EEG_to_txt(
-                                        raw_source_filt, config,
+                                        raw_source, config,
                                         config[f"file_path_source_{tag}"],
                                         scalings=source_scalings,
-                                        filtering=True,
-                                        l_freq=config["cut_off_frequency", low_band],
-                                        h_freq=config["cut_off_frequency", high_band],
                                     )
-
-                            del raw_source
-                            gc.collect()
-                            msg = f"Finished {tag}, freed memory"
-                            window["-RUN_INFO-"].update(msg + "\n", append=True)
-
-
-                # Clean up memory if source recon was used
-                if raw_source_input is not None:
-                    del raw_source_input
-                    gc.collect()
+                                
+                                if config["apply_output_filtering"]:
+                                    frequency_band_pairs = get_active_frequency_bands(config)
+                                    
+                                    for low_band, high_band in frequency_band_pairs:
+                                        raw_source_filt = filter_output_raw(
+                                            raw_source, config,
+                                            l_freq=config["cut_off_frequency", low_band],
+                                            h_freq=config["cut_off_frequency", high_band],
+                                        )
+                                        save_whole_EEG_to_txt(
+                                            raw_source_filt, config,
+                                            config[f"file_path_source_{tag}"],
+                                            scalings=source_scalings,
+                                            filtering=True,
+                                            l_freq=config["cut_off_frequency", low_band],
+                                            h_freq=config["cut_off_frequency", high_band],
+                                        )
+    
+                                del raw_source
+                                gc.collect()
+                                msg = f"Finished {tag}, freed memory"
+                                window["-RUN_INFO-"].update(msg + "\n", append=True)
                         
-                write_config_file(config)
-
-                # Save intermediate log file content after each file is processed
-                try:
-                    run_info_content = window["-RUN_INFO-"].get()
-                    file_info_content = window["-FILE_INFO-"].get()
-
-                    with open(config["logfile"], "w", encoding="utf-8") as f:
-                        f.write("--- RUN INFO (intermediate save) ---\n")
-                        f.write(run_info_content)
-                        f.write("\n\n--- FILE INFO (intermediate save) ---\n")
-                        f.write(file_info_content)
-                except Exception as log_save_err:
-                    # If logging fails, don't crash the batch. Print warning instead.
-                    print(f"CRITICAL WARNING: Could not save intermediate log file: {log_save_err}")
-
-                filenum = filenum + 1
-                progress_bar_files.UpdateBar(filenum, lfl)
-                # end of for loop over files
+                    # Clean up memory if source recon was used.
+                    if raw_source_input is not None:
+                        del raw_source_input
+                        gc.collect()
+                    
+                    # The sidecar is marked complete only after all requested
+                    # sensor and source TXT files have been exported.
+                    export_metadata["status"] = "complete"
+                    export_metadata["completed_at"] = (
+                        _json_timestamp()
+                    )
+                    
+                    metadata_written = try_write_export_metadata(
+                        export_metadata,
+                        config["export_metadata_path"],
+                        stage="final",
+                    )
+                    
+                    if metadata_written:
+                        log_run_info(
+                            "Recording metadata sidecar completed: "
+                            + config["export_metadata_path"]
+                        )
+                            
+                    write_config_file(config)
+    
+                    # Save intermediate log file content after each file is processed.
+                    try:
+                        run_info_content = window["-RUN_INFO-"].get()
+                        file_info_content = window["-FILE_INFO-"].get()
+                
+                        with open(config["logfile"], "w", encoding="utf-8") as f:
+                            f.write("--- RUN INFO (intermediate save) ---\n")
+                            f.write(run_info_content)
+                            f.write(
+                                "\n\n--- FILE INFO "
+                                "(intermediate save) ---\n"
+                            )
+                            f.write(file_info_content)
+                
+                    except Exception as log_save_err:
+                        # Logging failure should not stop the batch.
+                        print(
+                            "CRITICAL WARNING: Could not save "
+                            f"intermediate log file: {log_save_err}"
+                        )
+                        
+                    filenum = filenum + 1
+                    progress_bar_files.UpdateBar(filenum, lfl)
+                    # end of for loop over files
+                    
+                except Exception as file_err:
+                    error_text = traceback.format_exc()
+                    failed_files.append(file_name)
             
+                    log_run_info(
+                        f"\nERROR: Processing failed for {file_name}. "
+                        "Continuing with the next recording.\n"
+                        f"{error_text}"
+                    )
+            
+                    window["-FILE_INFO-"].update(
+                        f"\nERROR: Processing failed for {file_name}.\n"
+                        f"{error_text}\n",
+                        append=True,
+                    )
+            
+                    # If metadata had already been initialised, mark this
+                    # recording as failed. Failure to write this sidecar
+                    # must not stop the rest of the batch.
+                    if export_metadata is not None:
+                        export_metadata["status"] = "failed"
+                        export_metadata["failed_at"] = _json_timestamp()
+                        export_metadata["error"] = {
+                            "type": type(file_err).__name__,
+                            "message": str(file_err),
+                        }
+            
+                        try_write_export_metadata(
+                            export_metadata,
+                            config["export_metadata_path"],
+                            stage="failure",
+                        )
+            
+                    # Preserve the current rerun configuration if possible.
+                    try:
+                        write_config_file(config)
+                    except Exception as save_err:
+                        log_run_info(
+                            f"WARNING: Could not save recovery configuration "
+                            f"after failure of {file_name}: {save_err}"
+                        )
+            
+                    # Release references to large recording-specific objects.
+                    raw = None
+                    raw_temp = None
+                    raw_source = None
+                    raw_source_input = None
+                    gc.collect()
+            
+                    # Count failed recordings in the progress bar as processed.
+                    filenum += 1
+                    progress_bar_files.UpdateBar(filenum, lfl)
+            
+                    continue
+                
+            if failed_files:
+                log_run_info(
+                    f"\nBatch finished with {len(failed_files)} failed "
+                    f"recording(s): {', '.join(failed_files)}"
+                )
+            else:
+                log_run_info(
+                    "\nBatch finished without recording-level errors."
+                )
+                        
         except Exception:
             error_text = traceback.format_exc()
             try:
@@ -3887,13 +5040,21 @@ while True:  # @noloop remove
                 print("Could not write recovery .pkl:", save_err)
 
             try:
-                # make sure the directory exists
-                os.makedirs(os.path.dirname(config["logfile"]), exist_ok=True)
-                with open(config["logfile"], "a", encoding="utf-8") as f:
-                    f.write(traceback.format_exc())
-                    f.write(window["-FILE_INFO-"].get())
+                # Make sure the directory exists.
+                os.makedirs(
+                    os.path.dirname(config["logfile"]),
+                    exist_ok=True,
+                )
+
                 with open(config["logfile"], "w", encoding="utf-8") as f:
+                    f.write("--- RUN INFO ---\n")
                     f.write(window["-RUN_INFO-"].get())
+
+                    f.write("\n\n--- FILE INFO ---\n")
+                    f.write(window["-FILE_INFO-"].get())
+
+                    f.write("\n\n--- BATCH-LEVEL TRACEBACK ---\n")
+                    f.write(error_text)
             except Exception as log_err:
                 print("Could not write log file:", log_err)
         
@@ -3919,7 +5080,18 @@ while True:  # @noloop remove
             f.write(window["-FILE_INFO-"].get())
         msg = "Log file created: " + fn
         window["-FILE_INFO-"].update(msg + "\n", append=True)
-        msg = "Processing complete \n"
+        # msg = "Processing complete \n"
+        # window["-RUN_INFO-"].update(msg + "\n", append=True)
+        
+        if failed_files:
+            msg = (
+                f"Processing complete with {len(failed_files)} failed "
+                f"recording(s): {', '.join(failed_files)}\n"
+            )
+        else:
+            msg = "Processing complete without recording-level errors.\n"
+        
         window["-RUN_INFO-"].update(msg + "\n", append=True)
+        
 
 window.close()

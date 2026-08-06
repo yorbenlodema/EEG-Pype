@@ -1,9 +1,11 @@
 """@authors: Herman van Dellen en Yorben Lodema."""
 
 import itertools
+import json
 import logging
 import math
 import os
+import pickle
 import random
 import re
 import time
@@ -20,10 +22,11 @@ import psutil
 from antropy import lziv_complexity, sample_entropy
 from scipy import signal
 from scipy.signal import hilbert
+from scipy.integrate import trapezoid
 from scipy.sparse.csgraph import minimum_spanning_tree
 import FreeSimpleGUI as sg
 
-EEG_version = "v4.5.2"
+EEG_version = "v4.6.0"
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,7 @@ FREQUENCY_BANDS = {
     "beta": {"pattern": r"13\.0-30\.0|beta", "range": (13.0, 30.0)},
     "beta1": {"pattern": r"13\.0-20\.0|beta1", "range": (13.0, 20.0)},
     "beta2": {"pattern": r"20\.0-30\.0|beta2", "range": (20.0, 30.0)},
-    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 30.0)},
+    "broadband": {"pattern": r"0\.5-47|broadband", "range": (0.5, 47.0)},
 }
 
 def validate_frequency_bands():
@@ -72,6 +75,447 @@ def validate_frequency_bands():
         if not isinstance(band_info["pattern"], str):
             msg = f"Band {band_name} pattern must be a string"
             raise TypeError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Preprocessing pass-band discovery
+#
+# The preprocessing script (EEG-Pype) writes a batch config as
+# <batch_output_subdirectory>/<batch_name>.pkl, holding the band cut-offs under
+# tuple keys such as ("cut_off_frequency", "broadband_low"/"broadband_high"),
+# and a per-recording sidecar <file_output_subdirectory>/EXPORT_METADATA_NAME
+# containing filter metadata recorded from raw.info (base_highpass_hz /
+# base_lowpass_hz). For this release, the identity-matched batch config is
+# authoritative; sidecars are used only as a fallback when no valid config can
+# be found.
+#
+# Knowing this pass-band matters for relative power: the denominator should not
+# extend beyond the range that actually contains signal. Nyquist is a far weaker
+# bound (e.g. 125 Hz at fs=250) than the real 0.5-47 Hz pass-band, so validating
+# against Nyquist alone lets a user silently include filter roll-off in the
+# total-power reference.
+# ---------------------------------------------------------------------------
+
+EXPORT_METADATA_NAME = "eeg_pype_export_metadata.json"
+PASSBAND_HINT_DEFAULT = "(denominator for rel. power & spectral variability)"
+PASSBAND_SEARCH_PARENT_LEVELS = 3  # how far up from the selected folder to look
+PASSBAND_MATCH_ABS_TOL = 1e-6
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    """Unpickler that refuses to import anything outside a small allowlist.
+
+    The batch config is a plain dict of scalars, strings and lists, so nothing
+    exotic is required. Restricting find_class means a corrupted or untrusted
+    .pkl in the analysis folder cannot execute arbitrary imports while we are
+    only trying to read two floats out of it.
+    """
+
+    _ALLOWED = {
+        "builtins": {
+            "dict", "list", "tuple", "set", "frozenset",
+            "str", "int", "float", "bool", "complex", "bytes",
+        },
+        "collections": {"OrderedDict", "defaultdict"},
+        "numpy": {"dtype", "ndarray"},
+        "numpy.core.multiarray": {"_reconstruct", "scalar"},
+        "numpy._core.multiarray": {"_reconstruct", "scalar"},
+    }
+
+    def find_class(self, module, name):
+        if name in self._ALLOWED.get(module, ()):
+            return super().find_class(module, name)
+        msg = f"Blocked unpickling of {module}.{name}"
+        raise pickle.UnpicklingError(msg)
+
+
+def _coerce_positive_float(value):
+    """Return value as a finite float, or None if it is not usable."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(out) or out < 0:
+        return None
+    return out
+
+
+def _passband_from_batch_config(path):
+    """Read and validate broadband cut-offs from a preprocessing batch config."""
+    with open(path, "rb") as f:
+        cfg = _RestrictedUnpickler(f).load()
+
+    if not isinstance(cfg, dict):
+        return None
+
+    # EEG-Pype creates:
+    #
+    #     <batch_name>/<batch_name>.pkl
+    #
+    # Require the filename and the batch name stored inside the config to agree.
+    # This prevents an unrelated or copied .pkl from being selected silently.
+    expected_batch_name = os.path.splitext(os.path.basename(path))[0]
+    configured_batch_name = cfg.get("batch_name")
+
+    if (
+        configured_batch_name is not None
+        and str(configured_batch_name) != expected_batch_name
+    ):
+        logger.warning(
+            f"Ignoring batch config {path}: internal batch name "
+            f"{configured_batch_name!r} does not match filename "
+            f"{expected_batch_name!r}."
+        )
+        return None
+
+    # Also check the basename of the stored batch output directory when this
+    # information is available. Comparing only the basename keeps moved batch
+    # folders usable while still detecting an internally inconsistent config.
+    configured_batch_directory = cfg.get("batch_output_subdirectory")
+    if configured_batch_directory:
+        configured_directory_name = os.path.basename(
+            os.path.normpath(str(configured_batch_directory))
+        )
+
+        if configured_directory_name != expected_batch_name:
+            logger.warning(
+                f"Ignoring batch config {path}: stored output directory "
+                f"{configured_directory_name!r} does not match batch name "
+                f"{expected_batch_name!r}."
+            )
+            return None
+
+    low = _coerce_positive_float(
+        cfg.get(("cut_off_frequency", "broadband_low"))
+    )
+    high = _coerce_positive_float(
+        cfg.get(("cut_off_frequency", "broadband_high"))
+    )
+
+    if low is None or high is None or low >= high:
+        return None
+
+    return {
+        "low": low,
+        "high": high,
+        "origin": "config",
+        "detail": (
+            f"broadband filter cut-offs in "
+            f"{os.path.basename(path)}"
+        ),
+    }
+
+
+def _passband_from_export_metadata(path):
+    """Read the applied filter from one EEG-Pype JSON sidecar."""
+    with open(path, encoding="utf-8") as f:
+        meta = json.load(f)
+
+    if not isinstance(meta, dict):
+        return None
+
+    # Ignore JSON belonging to another application or schema.
+    schema_name = meta.get("schema_name")
+    if schema_name not in (None, "EEG-Pype export metadata"):
+        return None
+
+    # An in-progress or failed recording should not determine the analysis
+    # pass-band. Missing status is accepted for backwards compatibility.
+    status = meta.get("status")
+    if status not in (None, "complete"):
+        logger.debug(
+            f"Ignoring pass-band metadata from {path}: "
+            f"recording status is {status!r}."
+        )
+        return None
+
+    output = meta.get("output")
+    if not isinstance(output, dict):
+        return None
+
+    low = _coerce_positive_float(
+        output.get("base_highpass_hz")
+    )
+    high = _coerce_positive_float(
+        output.get("base_lowpass_hz")
+    )
+
+    if low is None or high is None or low >= high:
+        return None
+
+    return {
+        "low": low,
+        "high": high,
+        "origin": "sidecar",
+        "detail": f"filter recorded in {os.path.basename(path)}",
+    }
+
+
+def _iter_candidate_config_paths(folder_path):
+    """Yield only identity-matched batch configs, nearest folder first.
+
+    EEG-Pype names the batch configuration after its containing batch folder:
+
+        <batch_name>/<batch_name>.pkl
+
+    Therefore, do not scan arbitrary .pkl files. At every candidate directory,
+    only inspect the .pkl whose basename exactly matches that directory.
+    """
+    current = os.path.abspath(folder_path)
+
+    for _ in range(PASSBAND_SEARCH_PARENT_LEVELS + 1):
+        directory_name = os.path.basename(
+            os.path.normpath(current)
+        )
+
+        if directory_name:
+            candidate = os.path.join(
+                current,
+                f"{directory_name}.pkl",
+            )
+
+            if os.path.isfile(candidate):
+                yield candidate
+
+        parent = os.path.dirname(current)
+        if parent == current:
+            return
+
+        current = parent
+
+
+def _iter_candidate_sidecar_paths(folder_path):
+    """Yield sidecars in the selected folder and its direct subfolders."""
+    root = os.path.abspath(folder_path)
+    yielded_paths = set()
+
+    direct = os.path.join(
+        root,
+        EXPORT_METADATA_NAME,
+    )
+
+    if os.path.isfile(direct):
+        yielded_paths.add(direct)
+        yield direct
+
+    try:
+        entries = sorted(os.listdir(root))
+    except OSError:
+        return
+
+    for entry in entries:
+        candidate = os.path.join(
+            root,
+            entry,
+            EXPORT_METADATA_NAME,
+        )
+
+        if (
+            os.path.isfile(candidate)
+            and candidate not in yielded_paths
+        ):
+            yielded_paths.add(candidate)
+            yield candidate
+
+
+def _passbands_match(first, second):
+    """Return whether two discovered pass-bands are numerically equal."""
+    return (
+        math.isclose(
+            first["low"],
+            second["low"],
+            rel_tol=0.0,
+            abs_tol=PASSBAND_MATCH_ABS_TOL,
+        )
+        and math.isclose(
+            first["high"],
+            second["high"],
+            rel_tol=0.0,
+            abs_tol=PASSBAND_MATCH_ABS_TOL,
+        )
+    )
+
+
+def _discover_consistent_sidecar_passband(folder_path):
+    """Return one pass-band only when all usable sidecars agree.
+
+    Returns
+    -------
+    tuple
+        ``(result, conflict_found)``.
+
+        - result is a pass-band dict or None.
+        - conflict_found is True when valid sidecars contained different
+          pass-bands. Sidecars are fallback metadata, so a conflict matters
+          only when no valid identity-matched batch config is available.
+    """
+    sidecar_results = []
+
+    for path in _iter_candidate_sidecar_paths(folder_path):
+        try:
+            result = _passband_from_export_metadata(path)
+        except (
+            OSError,
+            json.JSONDecodeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            logger.debug(
+                f"Could not read pass-band from {path}: {exc}"
+            )
+            continue
+
+        if result is not None:
+            sidecar_results.append(
+                (path, result)
+            )
+
+    if not sidecar_results:
+        return None, False
+
+    reference_path, reference_result = sidecar_results[0]
+
+    conflicting_results = [
+        (path, result)
+        for path, result in sidecar_results[1:]
+        if not _passbands_match(
+            reference_result,
+            result,
+        )
+    ]
+
+    if conflicting_results:
+        ranges = {
+            (
+                round(result["low"], 9),
+                round(result["high"], 9),
+            )
+            for _, result in sidecar_results
+        }
+
+        formatted_ranges = ", ".join(
+            f"{low:g}-{high:g} Hz"
+            for low, high in sorted(ranges)
+        )
+
+        logger.warning(
+            "No valid identity-matched batch config was found, and "
+            "the available export metadata sidecars contain different "
+            f"pass-bands: {formatted_ranges}. Automatic pass-band "
+            "discovery has been disabled."
+        )
+
+        return None, True
+
+    return {
+        "low": reference_result["low"],
+        "high": reference_result["high"],
+        "origin": "sidecar",
+        "source": reference_path,
+        "detail": (
+            f"consistent filters in "
+            f"{len(sidecar_results)} usable export metadata "
+            f"sidecar(s)"
+        ),
+    }, False
+
+
+def discover_preprocessing_passband(folder_path):
+    """Discover the preprocessing pass-band for the selected data folder.
+
+    Precedence for this release is deliberately simple and conservative:
+
+    1. Use the nearest identity-matched <batch_name>/<batch_name>.pkl config.
+       This is the authoritative source for the configured broadband export
+       range.
+    2. Only when no valid matching config is found, inspect completed
+       recording-level JSON sidecars as a fallback.
+    3. Fallback sidecars must agree with one another. If they disagree,
+       automatic discovery is disabled and the user-entered range is retained.
+
+    The config and sidecars are not compared directly because the current JSON
+    fields are derived from raw.info and do not yet unambiguously describe the
+    pass-band of every exported broadband epoch file.
+    """
+    if not folder_path or not os.path.isdir(folder_path):
+        return None
+
+    # First try the nearest identity-matched batch config. As soon as a valid
+    # config is found, return it without scanning recording sidecars. Besides
+    # reflecting the intended precedence, this avoids potentially opening
+    # hundreds of JSON files on the GUI thread for a normal batch selection.
+    for path in _iter_candidate_config_paths(folder_path):
+        try:
+            result = _passband_from_batch_config(path)
+        except (
+            OSError,
+            pickle.UnpicklingError,
+            EOFError,
+            AttributeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            logger.debug(
+                f"Could not read pass-band from {path}: {exc}"
+            )
+            continue
+
+        if result is not None:
+            result["source"] = path
+            logger.info(
+                f"Detected preprocessing pass-band "
+                f"{result['low']:g}-{result['high']:g} Hz "
+                f"from {result['detail']}."
+            )
+            return result
+
+    # No valid identity-matched config was found. Use sidecars only as a
+    # fallback, and only when all usable sidecars agree.
+    sidecar_result, sidecar_conflict = (
+        _discover_consistent_sidecar_passband(folder_path)
+    )
+
+    if sidecar_conflict:
+        return None
+
+    if sidecar_result is not None:
+        logger.info(
+            f"Detected preprocessing pass-band "
+            f"{sidecar_result['low']:g}-{sidecar_result['high']:g} Hz "
+            f"from fallback {sidecar_result['detail']}."
+        )
+        return sidecar_result
+
+    logger.info(
+        "No unambiguous EEG-Pype preprocessing pass-band was found near "
+        "the selected folder. The relative-power reference range will be "
+        "bounded by the PSD and Nyquist limits only."
+    )
+    return None
+
+
+def effective_reference_ceiling(power_fs, psd_method, passband=None):
+    """Return the highest usable top edge for the relative-power reference range.
+
+    Combines the three independent ceilings: Nyquist, the multitaper PSD cut-off
+    (the multitaper path computes up to 60 Hz), and the pass-band of the
+    preprocessed data when it could be discovered. Returns (ceiling, reason).
+    """
+    ceiling = power_fs / 2.0
+    reason = f"Nyquist ({ceiling:g} Hz)"
+
+    if psd_method == "multitaper":
+        mt_ceiling = min(60.0, power_fs / 2.0)
+        if mt_ceiling < ceiling:
+            ceiling = mt_ceiling
+            reason = f"multitaper PSD cut-off ({ceiling:g} Hz)"
+
+    if passband is not None and passband["high"] < ceiling:
+        ceiling = passband["high"]
+        reason = f"preprocessing low-pass ({ceiling:g} Hz)"
+
+    return ceiling, reason
 
 
 BATCH_SIZE = 10  # Number of subjects to process in parallel
@@ -208,6 +652,24 @@ def create_gui():
     """Create the GUI layout for EEG analysis settings (Pipeline Layout)."""
     suggested_threads = DEFAULT_THREADS
 
+    # Adapt to the available screen height. The log box is the one element that
+    # can give back rows without hiding a setting, so it shrinks on short
+    # screens (e.g. 1366x768 laptops) and expands again on tall ones. It also
+    # has expand_y=True, so it reclaims any spare height at run time.
+    try:
+        _screen_h = sg.Window.get_screen_size()[1]
+    except Exception:  # noqa: BLE001 - screen probing must never block the GUI
+        _screen_h = 1080
+    log_rows = 8 if _screen_h < 900 else 12
+
+    # Seed the relative-power reference range from the 'broadband' band definition
+    # so the GUI default matches the historical behaviour, while still letting the
+    # user override it independently of the band definitions.
+    if "broadband" in FREQUENCY_BANDS:
+        default_total_min, default_total_max = FREQUENCY_BANDS["broadband"]["range"]
+    else:
+        default_total_min, default_total_max = 0.5, 47.0
+
     HEADER_BG = "#2C5784"
     HEADER_TEXT = "#FFFFFF"
     MAIN_BG = "#F0F2F6"
@@ -247,7 +709,8 @@ def create_gui():
                 "Input Settings",
                 [
                     [sg.Text("Select data folder:", font=("Helvetica", 11, "bold"), background_color=MAIN_BG)],
-                    [sg.Input(key="-FOLDER-", size=(25, 1)), sg.FolderBrowse(button_color=BUTTON_COLOR)],
+                    [sg.Input(key="-FOLDER-", size=(25, 1), enable_events=True),
+                     sg.FolderBrowse(button_color=BUTTON_COLOR)],
                     [
                         sg.Text("Folder extension:", background_color=MAIN_BG),
                         sg.Input(FOLDER_EXTENSION, key="-EXTENSION-", size=(8, 1)),
@@ -286,11 +749,56 @@ def create_gui():
                 background_color=MAIN_BG, expand_x=True
             )
         ],
+        # Step 2 continues here: the complexity measures belong to the same
+        # analysis step as the spectral and connectivity blocks in the next
+        # column, and are placed here to keep the window short enough for
+        # smaller screens.
+        [sg.Text("Step 2: Complexity", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR,
+                 background_color=MAIN_BG, pad=((5, 3), (12, 3)))],
+        [
+            sg.Frame(
+                "Complexity Measures",
+                [
+                    [sg.Checkbox("Calculate JPE/PE", key="-CALC_JPE-", default=False, background_color=MAIN_BG)],
+                    [sg.Text("Time step (tau):", background_color=MAIN_BG), sg.Input("1", key="-JPE_ST-", size=(5, 1))],
+                    [sg.Checkbox("Invert JPE (1-entropy)", key="-INVERT-", default=True, background_color=MAIN_BG)],
+                    [
+                        sg.Checkbox(
+                            "Calculate Sample Entropy", key="-CALC_SAMPEN-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-SAMPEN_M-", size=(3, 1))],
+                    [
+                        sg.Checkbox(
+                            "Calculate Approx. Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    
+                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-APEN_M-", size=(3, 1))],
+                    [
+                        sg.Text("Tolerance (r):", background_color=MAIN_BG),
+                        sg.Input("0.25", key="-APEN_R-", size=(3, 1)),
+                    ],
+                    [
+                        sg.Checkbox(
+                            "Calculate Lempel-Ziv Complexity", key="-CALC_LZC-", default=False, background_color=MAIN_BG
+                        )
+                    ],
+                    [
+                        sg.Text("Threshold:", background_color=MAIN_BG),
+                        sg.Combo(
+                            ["median", "mean"], default_value="median", key="-LZC_THRESH-", size=(8, 1)
+                        ),
+                    ],
+                ],
+                background_color=MAIN_BG, expand_x=True
+            )
+        ],
     ]
 
     # --- Step 2: Analysis Configuration ---
     step_2_layout = [
-        [sg.Text("Step 2: Analysis", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],        
+        [sg.Text("Step 2: Spectral & Connectivity", font=("Helvetica", 12, "bold"), text_color=STEP_TEXT_COLOR, background_color=MAIN_BG)],        
         [
             sg.Frame(
                 "Spectral Analysis",
@@ -310,16 +818,14 @@ def create_gui():
                     ],                    
                     [sg.HorizontalSeparator(color="#D0D0D0")],
                     [
-                        sg.Text("Welch window (ms):", background_color=MAIN_BG, size=(28, 1)),
-                        sg.Input("1000", key="-WELCH_WINDOW-", size=(8, 1), enable_events=True),
+                        sg.Text("Welch window (ms):", background_color=MAIN_BG, size=(18, 1)),
+                        sg.Input("1000", key="-WELCH_WINDOW-", size=(7, 1), enable_events=True),
+                        sg.Text("overlap (%):", background_color=MAIN_BG),
+                        sg.Input("50", key="-WELCH_OVERLAP-", size=(5, 1)),
                     ],
                     [
-                        sg.Text("Welch overlap (%):", background_color=MAIN_BG, size=(28, 1)),
-                        sg.Input("50", key="-WELCH_OVERLAP-", size=(8, 1)),
-                    ],
-                    [
-                        sg.Text("Multitaper bandwidth (Hz):", background_color=MAIN_BG, size=(28, 1)),
-                        sg.Input("Auto", key="-MT_BANDWIDTH-", size=(8, 1), enable_events=True),
+                        sg.Text("Multitaper bandwidth (Hz):", background_color=MAIN_BG, size=(18, 1)),
+                        sg.Input("Auto", key="-MT_BANDWIDTH-", size=(7, 1), enable_events=True),
                     ],
                     [
                         sg.Text("", key="-FREQ_RES-", background_color=MAIN_BG,
@@ -327,17 +833,30 @@ def create_gui():
                     ],
                     [sg.HorizontalSeparator(color="#D0D0D0")],
                     
-                    [sg.Checkbox("Calculate power bands", key="-CALC_POWER-", default=False, background_color=MAIN_BG)],
-                    [sg.Checkbox("Calculate peak frequency", key="-CALC_PEAK-", default=False, background_color=MAIN_BG)],
                     [
-                        sg.Text("Freq range:", background_color=MAIN_BG),
-                        sg.Input("4", key="-PEAK_MIN-", size=(3, 1)),
+                        sg.Checkbox("Calculate power bands", key="-CALC_POWER-",
+                                    default=False, background_color=MAIN_BG),
+                        sg.Text("ref. (Hz):", background_color=MAIN_BG),
+                        sg.Input(f"{default_total_min:g}", key="-TOTAL_MIN-", size=(5, 1)),
                         sg.Text("-", background_color=MAIN_BG),
-                        sg.Input("13", key="-PEAK_MAX-", size=(3, 1)),
+                        sg.Input(f"{default_total_max:g}", key="-TOTAL_MAX-", size=(5, 1)),
                     ],
-                    [sg.Checkbox("Calc. spectral variability", key="-CALC_SV-", default=False, background_color=MAIN_BG)],
                     [
-                        sg.Text("Window (ms):", background_color=MAIN_BG),
+                        sg.Text(PASSBAND_HINT_DEFAULT, key="-PASSBAND_INFO-", background_color=MAIN_BG,
+                                text_color="#606060", font=("Helvetica", 9, "italic"), size=(48, 1)),
+                    ],
+                    [
+                        sg.Checkbox("Calculate peak frequency", key="-CALC_PEAK-",
+                                    default=False, background_color=MAIN_BG),
+                        sg.Text("range:", background_color=MAIN_BG),
+                        sg.Input("4", key="-PEAK_MIN-", size=(4, 1)),
+                        sg.Text("-", background_color=MAIN_BG),
+                        sg.Input("13", key="-PEAK_MAX-", size=(4, 1)),
+                    ],
+                    [
+                        sg.Checkbox("Calc. spectral variability", key="-CALC_SV-",
+                                    default=False, background_color=MAIN_BG),
+                        sg.Text("window (ms):", background_color=MAIN_BG),
                         sg.Input("2000", key="-SV_WINDOW-", size=(6, 1)),
                     ],
                 ],
@@ -396,45 +915,6 @@ def create_gui():
                             default=True,
                             background_color=MAIN_BG,
                         )
-                    ],
-                ],
-                background_color=MAIN_BG, expand_x=True
-            )
-        ],
-        [
-            sg.Frame(
-                "Complexity Measures",
-                [
-                    [sg.Checkbox("Calculate JPE/PE", key="-CALC_JPE-", default=False, background_color=MAIN_BG)],
-                    [sg.Text("Time step (tau):", background_color=MAIN_BG), sg.Input("1", key="-JPE_ST-", size=(5, 1))],
-                    [sg.Checkbox("Invert JPE (1-entropy)", key="-INVERT-", default=True, background_color=MAIN_BG)],
-                    [
-                        sg.Checkbox(
-                            "Calculate Sample Entropy", key="-CALC_SAMPEN-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-SAMPEN_M-", size=(3, 1))],
-                    [
-                        sg.Checkbox(
-                            "Calculate Approx. Entropy", key="-CALC_APEN-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    
-                    [sg.Text("Order (m):", background_color=MAIN_BG), sg.Input("2", key="-APEN_M-", size=(3, 1))],
-                    [
-                        sg.Text("Tolerance (r):", background_color=MAIN_BG),
-                        sg.Input("0.25", key="-APEN_R-", size=(3, 1)),
-                    ],
-                    [
-                        sg.Checkbox(
-                            "Calculate Lempel-Ziv Complexity", key="-CALC_LZC-", default=False, background_color=MAIN_BG
-                        )
-                    ],
-                    [
-                        sg.Text("Threshold:", background_color=MAIN_BG),
-                        sg.Combo(
-                            ["median", "mean"], default_value="median", key="-LZC_THRESH-", size=(8, 1)
-                        ),
                     ],
                 ],
                 background_color=MAIN_BG, expand_x=True
@@ -522,7 +1002,7 @@ def create_gui():
                     [sg.Text("Log Output:", background_color=MAIN_BG, font=("Helvetica", 9, "bold"))],
                     [
                         sg.Multiline(
-                            size=(60, 15),
+                            size=(60, log_rows),
                             key="-LOG-",
                             autoscroll=True,
                             reroute_stdout=True,
@@ -590,7 +1070,9 @@ def extract_freq_band(condition):
         # Add Hz to pattern if not already included
 
         if not pattern.endswith("Hz"):
-            search_pattern = f"{pattern}(\\s*Hz)?"
+            # Wrap in a non-capturing group: '|' has the lowest precedence, so an
+            # unwrapped pattern like 'a|b' would attach the optional Hz to 'b' only.
+            search_pattern = f"(?:{pattern})(\\s*Hz)?"
 
         else:
             search_pattern = pattern
@@ -887,6 +1369,7 @@ def _calculate_multitaper_psd(data: np.ndarray, fs: float, bandwidth=None):
         fmin=0,
         fmax=fmax,
         bandwidth=bandwidth,
+        normalization="full",
         n_jobs=1,
         verbose=False,
     )
@@ -1134,13 +1617,16 @@ def _phi_vectorized(x, m, r):
     # Calculate Φᵐ(r) with small constant to avoid log(0)
     return np.mean(np.log(C + 1e-10))
 
-def calculate_spectral_variability(data_values, fs, window_length=2000):
+def calculate_spectral_variability(data_values, fs, window_length=2000, total_power_range=None):
     """Calculate spectral variability per channel from concatenated broadband data.
 
     Uses FREQUENCY_BANDS for band definitions.
 
     - Expects pre-concatenated data with channel means already removed.
-    - The "broadband" band is assumed to define total power reference.
+    - ``total_power_range`` sets the denominator for the relative-power time
+      series whose coefficient of variation is reported. It defaults to
+      FREQUENCY_BANDS["broadband"]["range"], and should normally be the same
+      range passed to calculate_power_bands so the two outputs are comparable.
     """
     try:
         num_samples, num_channels = data_values.shape
@@ -1154,11 +1640,16 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
             )
             return None
 
-        # 1) Identify the broadband range for total power
-        if "broadband" not in FREQUENCY_BANDS:
-            logger.exception("Broadband frequency range not defined in FREQUENCY_BANDS")
-            return None
-        broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
+        # 1) Identify the reference range used for total power
+        if total_power_range is None:
+            if "broadband" not in FREQUENCY_BANDS:
+                logger.error(
+                    "No reference range available for spectral variability "
+                    "('broadband' missing from FREQUENCY_BANDS and no explicit range given)"
+                )
+                return None
+            total_power_range = FREQUENCY_BANDS["broadband"]["range"]
+        broadband_min, broadband_max = total_power_range
 
         # Prepare output dict of CV values
         cv_values = {}
@@ -1183,7 +1674,10 @@ def calculate_spectral_variability(data_values, fs, window_length=2000):
                 # Create mask for broadband total power
                 total_mask = (f >= broadband_min) & (f < broadband_max)
                 if not np.any(total_mask):
-                    logger.exception("No frequencies found in the broadband range.")
+                    logger.error(
+                        f"No spectrogram bins in the reference range "
+                        f"{broadband_min}-{broadband_max} Hz."
+                    )
                     for band_name in cv_values:  # noqa: PLC0206
                         cv_values[band_name][channel] = np.nan
                     continue
@@ -1308,11 +1802,58 @@ def calculate_avg_peak_frequency(frequencies, psd, freq_range=(4, 13), sg_window
 
     return peak_frequencies
 
-def calculate_power_bands(frequencies, psd):
-    """Calculate absolute and relative power.
+def integrate_psd_band(frequencies, psd, frequency_mask):
+    """Integrate PSD over a selected frequency range.
 
-    Uses pre-computed PSD for all defined frequency bands in FREQUENCY_BANDS, assuming
-    'broadband' is always available in the dictionary for total power.
+    Parameters
+    ----------
+    frequencies : np.ndarray
+        One-dimensional frequency axis in Hz.
+    psd : np.ndarray
+        PSD values with shape frequencies x channels. Values are expected to
+        be power spectral density, for example µV²/Hz or V²/Hz.
+    frequency_mask : np.ndarray
+        Boolean mask selecting the frequencies to integrate.
+
+    Returns
+    -------
+    np.ndarray
+        Integrated power for each channel.
+    """
+    selected_frequencies = frequencies[frequency_mask]
+    selected_psd = psd[frequency_mask, :]
+
+    if selected_frequencies.size == 0:
+        raise ValueError("No frequency bins available for PSD integration.")
+
+    if selected_frequencies.size == 1:
+        # Trapezoidal integration over a single point would return zero.
+        # Approximate the integral using the frequency-bin width.
+        if frequencies.size < 2:
+            raise ValueError(
+                "At least two PSD frequency bins are required to estimate "
+                "integrated power."
+            )
+
+        frequency_resolution = float(np.median(np.diff(frequencies)))
+        return selected_psd[0, :] * frequency_resolution
+
+    return trapezoid(
+        selected_psd,
+        x=selected_frequencies,
+        axis=0,
+    )
+
+def calculate_power_bands(frequencies, psd, total_power_range=None):
+    """Calculate integrated absolute and relative power.
+
+    The input PSD is numerically integrated over each frequency band. Absolute
+    power therefore has units of signal squared rather than signal squared per Hz,
+    and does not scale directly with the PSD frequency resolution.
+    
+    The denominator used for relative power ("total power") is an explicit
+    parameter rather than being implicitly tied to the 'broadband' entry, so the
+    reference range can be chosen independently of the band definitions.
 
     Parameters
     ----------
@@ -1320,6 +1861,9 @@ def calculate_power_bands(frequencies, psd):
         1D array of frequency values.
     psd : np.ndarray
         2D array of power spectral density (frequencies x channels).
+    total_power_range : tuple (fmin, fmax), optional
+        Frequency range used as the denominator for relative power. Defaults to
+        FREQUENCY_BANDS["broadband"]["range"] for backwards compatibility.
 
     Returns
     -------
@@ -1329,11 +1873,30 @@ def calculate_power_bands(frequencies, psd):
         - powers: dict with mean abs/rel power across channels per band
         - channel_powers: dict with channel-level arrays (one entry per band)
     """
-    broadband_min, broadband_max = FREQUENCY_BANDS["broadband"]["range"]
-    broadband_mask = (frequencies >= broadband_min) & (frequencies < broadband_max)
+    if total_power_range is None:
+        total_power_range = FREQUENCY_BANDS["broadband"]["range"]
+    total_min, total_max = total_power_range
 
-    # Compute total power in the broadband range
-    total_power = np.sum(psd[broadband_mask, :], axis=0)  # shape: (n_channels,)
+    total_mask = (frequencies >= total_min) & (frequencies < total_max)
+    if not np.any(total_mask):
+        msg = f"No PSD bins in reference range {total_min}-{total_max} Hz"
+        raise ValueError(msg)
+
+    # Warn if the PSD does not actually reach the requested top edge (e.g. the
+    # multitaper path truncates at 60 Hz, or fs/2 is lower than requested).
+    if frequencies.max() < total_max:
+        logger.warning(
+            f"Reference range top edge {total_max} Hz exceeds highest PSD bin "
+            f"({frequencies.max():.2f} Hz); total power is effectively "
+            f"{total_min}-{frequencies.max():.2f} Hz."
+        )
+    
+    # Integrate PSD over the relative-power reference range
+    total_power = integrate_psd_band(
+        frequencies,
+        psd,
+        total_mask,
+    )
 
     # Prepare output containers
     powers = {}
@@ -1344,17 +1907,26 @@ def calculate_power_bands(frequencies, psd):
         # Calculate for all bands including 'broadband'
         fmin, fmax = band_info["range"]
         band_mask = (frequencies >= fmin) & (frequencies < fmax)
+        
+        # Integrate PSD over this frequency band
+        if not np.any(band_mask):
+            logger.warning(
+                f"No PSD bins available for frequency band "
+                f"{band_name} ({fmin}-{fmax} Hz)."
+            )
+            abs_power = np.full(psd.shape[1], np.nan)
+        else:
+            abs_power = integrate_psd_band(
+                frequencies,
+                psd,
+                band_mask,
+            )
 
-        # Compute absolute power in this band
-        abs_power = np.sum(psd[band_mask, :], axis=0)
-
-        # Compute relative power
+        # Compute relative power. Note that the 'broadband' band is no longer
+        # forced to 1.0: with a user-chosen reference range its relative power is
+        # a useful diagnostic (how much of the reference range it covers).
         with np.errstate(divide="ignore", invalid="ignore"):
-            # For broadband, relative power is 1.0 by definition
-            if band_name.lower() == "broadband":
-                rel_power = np.ones_like(abs_power)
-            else:
-                rel_power = abs_power / total_power
+            rel_power = np.where(total_power > 0, abs_power / total_power, np.nan)
 
         # Store mean abs/rel power across channels
         powers[f"{band_name}_abs_power"] = np.nanmean(abs_power)
@@ -1440,14 +2012,7 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
         sum_x2 = sum(((n_total - 1) * deg) ** 2 for node, deg in degrees.items() if used_channels[node])
         measures["kappa"] = sum_x2 / sum_x if sum_x > 0 else 0
 
-        # # 7. Tree hierarchy
-        # max_betweenness = max(betweenness.values()) if betweenness else 0
-        # if max_betweenness > 0:
-        #     measures["hierarchy"] = leaf_nodes / (2 * max_betweenness * norm_factor)
-        # else:
-        #     measures["hierarchy"] = 0
-
-        # 8. Average shortest path (ASP)
+        # 7. Average shortest path (ASP)
         paths = dict(nx.all_pairs_shortest_path_length(G))
         sum_distances = 0
         for i in range(n_total):
@@ -1460,11 +2025,11 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
 
         measures["asp"] = sum_distances / (n_used * (n_used - 1)) if n_used > 1 else 0
 
-        # 9. Tree efficiency (Teff)
+        # 8. Tree efficiency (Teff)
         normalized_diam = raw_diameter / norm_factor
         measures["teff"] = 1.0 - (normalized_diam * (n_used - 1)) / (n_used - (n_used - 1) * measures["leaf"] + 1.0)
 
-        # 10. R (degree correlation)
+        # 9. R (degree correlation)
         degree_pairs = []
         for edge in G.edges():
             i, j = edge[0], edge[1]
@@ -1489,11 +2054,11 @@ def calculate_mst_measures(connectivity_matrix, used_channels=None):
         else:
             measures["r"] = 0
 
-        # 11. Mean edge weight
+        # 10. Mean edge weight
         edge_weights = [abs(d.get("weight", 1.0)) for _, _, d in G.edges(data=True)]
         measures["mean"] = np.mean(edge_weights) if edge_weights else 0
 
-        # 12. Reference value
+        # 11. Reference value
         mst_sum = np.sum(abs(mst_matrix[used_channels][:, used_channels]))
         orig_sum = np.sum(connectivity_matrix[used_channels][:, used_channels])
         measures["ref"] = mst_sum / orig_sum if orig_sum > 0 else 0
@@ -1845,6 +2410,7 @@ def process_subject_condition(args):
         calc_lzc, lzc_threshold, calc_plt_mst, matrix_folders, save_epoch_metrics,
         mt_bandwidth,
         save_psd_avg, save_psd_perchannel, save_psd_plots, psd_folder,
+        total_power_range,
     ) = args
 
     MST_MEASURES = ["degree", "eccentr", "betweenness", "kappa", "r",
@@ -1927,7 +2493,11 @@ def process_subject_condition(args):
                         spectral_data = calculate_PSD(data=data_values, fs=power_fs, method=psd_method, **psd_kwargs)
 
                         if calc_power:
-                            powers, channel_powers = calculate_power_bands(spectral_data["frequencies"], spectral_data["psd"])
+                            powers, channel_powers = calculate_power_bands(
+                                spectral_data["frequencies"],
+                                spectral_data["psd"],
+                                total_power_range=total_power_range,
+                            )
                             for measure, value in powers.items():
                                 power_values[measure].append(value)
                                 current_epoch_data[measure] = value
@@ -2184,7 +2754,12 @@ def process_subject_condition(args):
                 if all_data_sv:
                     concatenated_sv = np.concatenate(all_data_sv, axis=0)
                     del all_data_sv
-                    sv_results = calculate_spectral_variability(concatenated_sv, fs=power_fs, window_length=sv_window)
+                    sv_results = calculate_spectral_variability(
+                        concatenated_sv,
+                        fs=power_fs,
+                        window_length=sv_window,
+                        total_power_range=total_power_range,
+                    )
                     del concatenated_sv
                     if sv_results:
                         for band_name, values in sv_results.items():
@@ -2289,6 +2864,7 @@ def process_all_subjects(
     random_seed=111, progress_callback=None, matrix_folders=None, save_epoch_metrics=True,
     mt_bandwidth=None,
     save_psd_avg=False, save_psd_perchannel=False, save_psd_plots=False, psd_folder=None,
+    total_power_range=None,
 ):
     process_args = []
     
@@ -2311,6 +2887,7 @@ def process_all_subjects(
                 calc_lzc, lzc_threshold, calc_plt_mst, matrix_folders, save_epoch_metrics,
                 mt_bandwidth,
                 save_psd_avg, save_psd_perchannel, save_psd_plots, psd_folder,
+                total_power_range,
             ))
 
     total_tasks = len(process_args)
@@ -2463,6 +3040,8 @@ def save_results_to_excel(
     save_psd_avg=False,
     save_psd_perchannel=False,
     save_psd_plots=False,
+    total_power_range=None,
+    reference_range_source=None,
 ):
     """
     Save results to Excel with organized columns by condition.
@@ -2665,6 +3244,8 @@ def save_results_to_excel(
                 "PLT Threshold (ms)",
                 "AEC Force Positive",
                 "Power Bands Calculated",
+                "Relative Power Reference Range (Hz)",
+                "Reference Range Source",
                 "Sampling Frequency (Hz)",
                 "PSD Method",
                 "Welch Window Length (ms)",
@@ -2696,6 +3277,16 @@ def save_results_to_excel(
                 str(plt_threshold_ms) if calc_plt else "N/A",
                 "Yes" if force_positive else "No",
                 "Yes" if calc_power else "No",
+                (
+                    f"{total_power_range[0]:g}-{total_power_range[1]:g}"
+                    if (calc_power or calc_sv) and total_power_range is not None
+                    else "N/A"
+                ),
+                (
+                    reference_range_source
+                    if (calc_power or calc_sv) and reference_range_source
+                    else "N/A"
+                ),
                 str(power_fs),
                 psd_method,
                 str(welch_window_ms) if psd_method == "welch" else "N/A",
@@ -2840,6 +3431,10 @@ def main():
     if initial_values is not None:
         window["-FREQ_RES-"].update(compute_resolution_readout(initial_values))
 
+    # Tracks the last folder we probed for a preprocessing pass-band, so that
+    # typing a path by hand does not re-read the config on every keystroke.
+    last_passband_folder = None
+
     # --- GUI Event Loop ---
     while True:
         event, values = window.read()
@@ -2851,6 +3446,27 @@ def main():
         if event in ("-PSD_METHOD-", "-POWER_FS-", "-EPOCH_LENGTH-", "-WELCH_WINDOW-", "-MT_BANDWIDTH-"):
             window["-FREQ_RES-"].update(compute_resolution_readout(values))
             window.refresh()
+
+        # When a new folder is picked, seed the relative-power reference range
+        # from the pass-band the preprocessing script recorded, if we can find it.
+        if event == "-FOLDER-":
+            candidate = values["-FOLDER-"]
+            if candidate and candidate != last_passband_folder and os.path.isdir(candidate):
+                last_passband_folder = candidate
+                detected = discover_preprocessing_passband(candidate)
+                if detected is not None:
+                    window["-TOTAL_MIN-"].update(f"{detected['low']:g}")
+                    window["-TOTAL_MAX-"].update(f"{detected['high']:g}")
+                    window["-PASSBAND_INFO-"].update(
+                        f"Detected pass-band: {detected['low']:g}-{detected['high']:g} Hz",
+                        text_color="#1A6B3C",
+                    )
+                else:
+                    window["-PASSBAND_INFO-"].update(
+                        "No unambiguous preprocessing pass-band found",
+                        text_color="#8A6D1F",
+                    )
+                window.refresh()
 
         if event == "Process":
             # --- 1. Basic Setup & File Path Extraction ---
@@ -2937,7 +3553,7 @@ def main():
                     welch_overlap = float(values["-WELCH_OVERLAP-"])
                     if welch_window_ms <= 0:
                         raise ValueError("Welch window length must be greater than 0")
-                    if not 0 <= welch_overlap <= 100:
+                    if not 0 <= welch_overlap < 100:
                         raise ValueError("Welch overlap must be between 0 and 100")
                 
                 except ValueError:
@@ -2991,6 +3607,123 @@ def main():
             except ValueError:
                 sg.popup_error("Invalid sampling frequency value.")
                 continue
+
+            # Relative-power reference range (denominator for rel. power and SV)
+            total_power_range = (
+                FREQUENCY_BANDS["broadband"]["range"] if "broadband" in FREQUENCY_BANDS else (0.5, 47.0)
+            )
+            passband = None
+            reference_range_source = None
+            was_clamped = False
+            if values["-CALC_POWER-"] or values["-CALC_SV-"]:
+                # Prefer the pass-band the preprocessing script actually applied
+                # over the much weaker Nyquist bound.
+                passband = discover_preprocessing_passband(folder_path)
+                ceiling, ceiling_reason = effective_reference_ceiling(
+                    power_fs, psd_method, passband
+                )
+
+                try:
+                    total_min = float(values["-TOTAL_MIN-"])
+                    total_max = float(values["-TOTAL_MAX-"])
+                    if total_min < 0:
+                        raise ValueError("Reference minimum must be >= 0 Hz.")
+                    if total_min >= total_max:
+                        raise ValueError("Reference minimum must be below the reference maximum.")
+                    if total_max > power_fs / 2:
+                        raise ValueError(
+                            f"Reference maximum must not exceed Nyquist ({power_fs / 2:g} Hz)."
+                        )
+                except ValueError as exc:
+                    sg.popup_error(f"Invalid relative-power reference range.\n\n{exc}")
+                    continue
+                
+                if total_max > ceiling:
+                    if total_min >= ceiling:
+                        sg.popup_error(
+                            "Invalid relative-power reference range.\n\n"
+                            f"The reference minimum is {total_min:g} Hz, but the "
+                            f"highest usable frequency is {ceiling:g} Hz "
+                            f"because of the {ceiling_reason}.\n\n"
+                            "Choose a lower reference minimum."
+                        )
+                        continue
+                
+                    detail = (
+                        passband["detail"]
+                        if passband is not None
+                        else None
+                    )
+                    message = (
+                        f"The reference range you entered ({total_min:g}-{total_max:g} Hz) "
+                        f"extends beyond the {ceiling_reason}.\n\n"
+                    )
+                    if detail:
+                        message += f"Detected from: {detail}.\n\n"
+                    message += (
+                        f"Above {ceiling:g} Hz the data contains only filter roll-off, so "
+                        f"including it dilutes every relative power value.\n\n"
+                        f"Clamp the reference range to {total_min:g}-{ceiling:g} Hz?"
+                    )
+                    choice = sg.popup_yes_no(message, title="Reference range exceeds usable band")
+                    if choice == "Yes":
+                        total_max = ceiling
+                        was_clamped = True
+                        window["-TOTAL_MAX-"].update(f"{total_max:g}")
+                        logger.info(
+                            f"Reference range clamped to {total_min:g}-{total_max:g} Hz "
+                            f"({ceiling_reason})."
+                        )
+                    else:
+                        logger.warning(
+                            f"Reference range {total_min:g}-{total_max:g} Hz exceeds the "
+                            f"{ceiling_reason}; relative power will include out-of-band content."
+                        )
+
+                if passband is not None and total_min < passband["low"]:
+                    logger.warning(
+                        f"Reference minimum {total_min:g} Hz is below the preprocessing "
+                        f"high-pass ({passband['low']:g} Hz); the bottom of the reference "
+                        f"range contains attenuated signal only."
+                    )
+
+                total_power_range = (total_min, total_max)
+
+                # Record where the bound came from, so the Excel metadata makes
+                # a clamped range traceable rather than silent.
+                if passband is None:
+                    reference_range_source = (
+                        "user-specified "
+                        "(no unambiguous preprocessing pass-band found)"
+                    )
+                else:
+                    origin_label = {
+                        "config": "batch config",
+                        "sidecar": "fallback export metadata",
+                    }.get(
+                        passband["origin"],
+                        str(passband["origin"]),
+                    )
+                    
+                    reference_range_source = (
+                        f"pass-band {passband['low']:g}-{passband['high']:g} Hz "
+                        f"from {origin_label}"
+                    )
+                    if was_clamped:
+                        reference_range_source += "; range clamped to fit"
+
+                # Flag bands that stick out of the denominator.
+                outside = [
+                    name for name, info in FREQUENCY_BANDS.items()
+                    if name != "broadband"
+                    and (info["range"][0] < total_min or info["range"][1] > total_max)
+                ]
+                if outside:
+                    logger.warning(
+                        f"Bands partly outside the reference range {total_min:g}-{total_max:g} Hz: "
+                        f"{', '.join(outside)}. Their relative power will be misleading."
+                    )
+                logger.info(f"Relative power reference range: {total_min:g}-{total_max:g} Hz")
 
             peak_min = peak_max = None
             if values["-CALC_PEAK-"]:
@@ -3134,6 +3867,7 @@ def main():
                     save_psd_perchannel=save_psd_perchannel,
                     save_psd_plots=save_psd_plots,
                     psd_folder=psd_folder,
+                    total_power_range=total_power_range,
                 )
 
                 # --- 5. Export Results ---
@@ -3178,6 +3912,8 @@ def main():
                             save_psd_avg=save_psd_avg,
                             save_psd_perchannel=save_psd_perchannel,
                             save_psd_plots=save_psd_plots,
+                            total_power_range=total_power_range,
+                            reference_range_source=reference_range_source,
                         )
 
                         # Generate dynamic success summary

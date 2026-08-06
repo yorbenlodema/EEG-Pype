@@ -16,11 +16,11 @@ f_size = 5  # font size filter frequency inputs
 sg.set_options(tooltip_font=(16))  # tootip size
 settings = {}
 
-EEG_version = "v4.5.2"
+EEG_version = "v4.6.0"
 
 # script run defaults
 settings["default_epoch_length"] = 8
-settings["default_ica_components"] = 25
+settings["default_ica_components"] = 30
 settings["default_downsample_factor"] = 1
 settings["sample_frequencies"] = [250, 256, 500, 512, 1000, 1024, 1250, 2000, 2048, 4000, 5000]
 settings["apply_average_ref"] = 1
@@ -31,7 +31,7 @@ settings["apply_ica"] = 0
 settings["rerun"] = 0
 settings["apply_source_recon"] = 0
 # settings["channels_to_be_dropped_selected"] = 0
-settings["nr_ica_components"] = 0
+settings["nr_ica_components"] = 30
 settings["max_channels"] = 0
 settings["skip_input_file"] = 0
 settings["file_pattern"] = "-"
@@ -58,6 +58,19 @@ settings["channel_names_row"] = 0  # Channel names are in row ... +1 (0-based co
 
 # ICLabel settings
 settings["use_icalabel"] = 0  # Default off, user can enable
+
+# ICA fitting and reproducibility settings
+# The GUI starts at 30 components. This is an upper bound entered by the user,
+# not a hard cap: the processing script uses min(user_limit, measured_rank).
+settings["ica_random_state"] = 97
+settings["ica_fit_l_freq"] = 1.0
+settings["ica_fit_h_freq"] = 100.0
+settings["ica_fit_l_trans_bandwidth"] = 0.5
+settings["ica_fit_h_trans_bandwidth"] = 1.5
+settings["ica_fit_target_sfreq_pow2"] = 256
+settings["ica_fit_target_sfreq_other"] = 250
+settings["ica_fit_min_samples_per_param"] = 20
+settings["ica_fit_max_duration_s"] = None  # No duration cap by default
 
 # Beamformer atlas settings
 settings["beamformer_atlases"] = {
